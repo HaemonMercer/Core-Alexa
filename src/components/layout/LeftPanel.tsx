@@ -22,11 +22,12 @@ interface LeftPanelProps {
     onWidthChange: (width: number) => void;
     onNavigate: (page: Page) => void;
     onOpenRoot: () => void;
+    onOpenDataLocation: () => void;
     onToggle: () => void;
 }
 
 function LeftPanel({
-    page, collapsed, width, widthRange, otherWidth, onWidthChange, onNavigate, onOpenRoot, onToggle,
+    page, collapsed, width, widthRange, otherWidth, onWidthChange, onNavigate, onOpenRoot, onOpenDataLocation, onToggle,
 }: LeftPanelProps) {
     if (collapsed) {
         return (
@@ -64,6 +65,9 @@ function LeftPanel({
                     {item.label}
                 </button>
             ))}
+            <button className="left-panel-item left-panel-foot" onClick={onOpenDataLocation}>
+                資料位置
+            </button>
         </nav>
     );
 }

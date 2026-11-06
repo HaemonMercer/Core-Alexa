@@ -71,6 +71,21 @@ fn migrate(conn: &mut Connection) -> rusqlite::Result<()> {
     Ok(())
 }
 
+/// 寫出一致的複本。連線開著也安全，還沒寫回主檔的內容也會包含在內。
+pub fn write_copy(conn: &Connection, path: &Path) -> rusqlite::Result<()> {
+    conn.execute("VACUUM INTO ?1", [path.to_string_lossy()])?;
+    Ok(())
+}
+
+/// 真實資料的筆數，用來確認複本完整。
+pub fn count_rows(conn: &Connection) -> rusqlite::Result<(i64, i64)> {
+    conn.query_row(
+        "SELECT (SELECT count(*) FROM doc), (SELECT count(*) FROM doc_update)",
+        [],
+        |row| Ok((row.get(0)?, row.get(1)?)),
+    )
+}
+
 pub struct LoadedDoc {
     pub snapshot: Option<Vec<u8>>,
     pub updates: Vec<Vec<u8>>,

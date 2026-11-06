@@ -1,6 +1,7 @@
 //! 前端能呼叫的所有操作。這裡只轉接，規則都在 `model`。
 
 use crate::arrange::Arrangement;
+use crate::data_location::DataLocation;
 use crate::media::MediaStore;
 use crate::model::{
     Alexa, ArrowDirection, BoardState, CardMatch, CellRange, ChartData, OfficeDocuments, CreatedChart, CreatedNote, CreatedWhiteboard,
@@ -8,15 +9,59 @@ use crate::model::{
     RenamedWhiteboard, SheetOp, SheetState, SlidesEdit, SlidesOp, SlidesState, TagInfo, NoteTag, VideoInfo, ViewState, WhiteboardDeletion,
     WorkspaceState, WriterBlock, WriterEdit, WriterOp, WriterPage,
 };
-use std::path::Path;
+use serde::Serialize;
+use std::path::{Path, PathBuf};
 use std::sync::{Mutex, MutexGuard};
 use tauri::ipc::{InvokeBody, Request};
-use tauri::State;
+use tauri::{AppHandle, State};
 
 pub struct AppState(pub Mutex<Alexa>);
 
 fn locked<'a>(state: &'a State<'_, AppState>) -> Result<MutexGuard<'a, Alexa>, String> {
     state.0.lock().map_err(|_| "app state lock poisoned".to_string())
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DataLocationInfo {
+    path: String,
+    unavailable: Option<String>,
+}
+
+#[tauri::command]
+pub fn get_data_location(location: State<'_, DataLocation>) -> DataLocationInfo {
+    DataLocationInfo {
+        path: location.current.display().to_string(),
+        unavailable: location.unavailable.as_ref().map(|dir| dir.display().to_string()),
+    }
+}
+
+#[tauri::command]
+pub fn inspect_data_location(location: State<'_, DataLocation>, path: String) -> Result<bool, String> {
+    location.inspect(Path::new(&path))
+}
+
+/// 成功時程式會重新啟動，不會回傳。
+#[tauri::command(async)]
+pub fn set_data_location(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    location: State<'_, DataLocation>,
+    path: String,
+) -> Result<(), String> {
+    let target = PathBuf::from(path);
+    let has_data = location.inspect(&target)?;
+    if !has_data {
+        location.copy_media(&target)?;
+    }
+    // 鎖一直持有到重新啟動，複製之後的編輯才不會留在舊位置。
+    let alexa = locked(&state)?;
+    if !has_data {
+        location.copy_media(&target)?;
+        alexa.copy_database(&target)?;
+    }
+    location.remember(&target)?;
+    app.restart()
 }
 
 #[tauri::command]

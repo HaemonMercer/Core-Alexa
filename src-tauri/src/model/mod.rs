@@ -52,6 +52,10 @@ impl Alexa {
         Self::with_connection(storage::open(path).map_err(|e| e.to_string())?)
     }
 
+    pub fn copy_database(&self, folder: &Path) -> Result<(), String> {
+        crate::data_location::copy_database(&self.conn, folder)
+    }
+
     fn with_connection(conn: Connection) -> Result<Self, String> {
         let workspace = PersistedDoc::open(&conn, WORKSPACE_ID, "workspace")?;
         let mut alexa = Self {

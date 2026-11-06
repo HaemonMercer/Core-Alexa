@@ -10,6 +10,7 @@ import type {
     ChartData,
     CreatedChart,
     CreatedWhiteboard,
+    DataLocationInfo,
     ImportedFiles,
     MindNode,
     MindSide,
@@ -47,6 +48,13 @@ function send<T>(command: string, args?: Record<string, unknown>): Promise<T> {
     queue = result.catch(() => undefined);
     return result;
 }
+
+export const getDataLocation = () => send<DataLocationInfo>("get_data_location");
+
+export const inspectDataLocation = (path: string) => send<boolean>("inspect_data_location", { path });
+
+/** 排進佇列，先前的編輯都寫入後才複製。成功時程式會重新啟動。 */
+export const setDataLocation = (path: string) => send<void>("set_data_location", { path });
 
 export const getWorkspace = () => send<WorkspaceState>("get_workspace");
 

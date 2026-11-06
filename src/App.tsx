@@ -6,6 +6,7 @@ import CardFullscreen, { type CardFullscreenHandle } from "./components/cards/Ca
 import CardLibrary from "./components/cards/CardLibrary.tsx";
 import type { CardSurface } from "./components/cards/cardSurface.ts";
 import LibraryShelf, { type ShelfTab } from "./components/cards/LibraryShelf.tsx";
+import DataLocationDialog from "./components/common/DataLocationDialog.tsx";
 import LeftPanel, { pageLabel, type Page } from "./components/layout/LeftPanel.tsx";
 import OfficeLibrary from "./components/office/OfficeLibrary.tsx";
 import { usePanelWidth } from "./components/layout/PanelResizer.tsx";
@@ -83,6 +84,15 @@ function App() {
 
     /** 離開全螢幕前先存好：Draw.io 的 iframe 一移除就無法匯出預覽。 */
     const leaveFullscreen = useCallback(() => fullscreenRef.current?.flush() ?? Promise.resolve(), []);
+
+    const [dataLocationOpen, setDataLocationOpen] = useState(false);
+
+    // 選的位置打不開時一啟動就要說，否則會以為資料不見了。
+    useEffect(() => {
+        void api.getDataLocation().then((location) => {
+            if (location.unavailable) setDataLocationOpen(true);
+        });
+    }, []);
 
     const navigate = useCallback((next: Page) => {
         void leaveFullscreen().then(() => {
@@ -310,8 +320,12 @@ function App() {
                 onWidthChange={setLeftWidth}
                 onNavigate={navigate}
                 onOpenRoot={() => openWhiteboard(rootWhiteboardId)}
+                onOpenDataLocation={() => setDataLocationOpen(true)}
                 onToggle={() => setLeftCollapsed((collapsed) => !collapsed)}
             />
+            {dataLocationOpen && (
+                <DataLocationDialog onBeforeMove={leaveFullscreen} onClose={() => setDataLocationOpen(false)} />
+            )}
             <div className="workspace-pane">
                 <TabBar
                     state={tabState}

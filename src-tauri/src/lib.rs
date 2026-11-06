@@ -1,5 +1,6 @@
 mod arrange;
 mod commands;
+mod data_location;
 mod drawio;
 mod media;
 mod model;
@@ -8,6 +9,7 @@ mod persisted;
 mod storage;
 
 use commands::{decode_header, AppState};
+use data_location::{saved_location, DataLocation, DATABASE_FILE};
 use drawio::{is_trusted_origin, DrawioAssets};
 use media::MediaStore;
 use std::path::PathBuf;
@@ -17,12 +19,27 @@ use tauri::ipc::Invoke;
 use tauri::{Manager, Wry};
 
 /// 開發版可用 ALEXA_DATA_DIR 指定資料夾，測試時不會碰到真實資料。
-fn data_dir(app: &tauri::App) -> tauri::Result<PathBuf> {
+fn base_dir(app: &tauri::App) -> tauri::Result<PathBuf> {
     #[cfg(debug_assertions)]
     if let Some(dir) = std::env::var_os("ALEXA_DATA_DIR") {
         return Ok(PathBuf::from(dir));
     }
     app.path().app_data_dir()
+}
+
+/// 選的位置打不開時改用基本資料夾。不能在那裡建新資料庫，
+/// 否則外接硬碟晚點接上時，使用者會以為資料不見了。
+fn open_workspace(base: PathBuf) -> Result<(model::Alexa, DataLocation), String> {
+    let saved = saved_location(&base);
+    let opened = saved
+        .as_ref()
+        .filter(|dir| dir.join(DATABASE_FILE).is_file())
+        .and_then(|dir| model::Alexa::open(&dir.join(DATABASE_FILE)).ok());
+    if let (Some(alexa), Some(current)) = (opened, saved.clone()) {
+        return Ok((alexa, DataLocation { base, current, unavailable: None }));
+    }
+    let alexa = model::Alexa::open(&base.join(DATABASE_FILE))?;
+    Ok((alexa, DataLocation { current: base.clone(), base, unavailable: saved }))
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -31,11 +48,12 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
-            let dir = data_dir(app)?;
-            std::fs::create_dir_all(&dir)?;
-            let alexa = model::Alexa::open(&dir.join("alexa.db"))?;
+            let base = base_dir(app)?;
+            std::fs::create_dir_all(&base)?;
+            let (alexa, location) = open_workspace(base)?;
             app.manage(AppState(Mutex::new(alexa)));
-            app.manage(MediaStore::new(dir.join("media")));
+            app.manage(MediaStore::new(location.current.join("media")));
+            app.manage(location);
             app.manage(DrawioAssets::new(app.path().resource_dir()?.join("drawio")));
             Ok(())
         })
@@ -57,6 +75,9 @@ pub fn run() {
         })
         .invoke_handler({
             let handler: Box<dyn Fn(Invoke<Wry>) -> bool + Send + Sync> = Box::new(tauri::generate_handler![
+            commands::get_data_location,
+            commands::inspect_data_location,
+            commands::set_data_location,
             commands::get_workspace,
             commands::create_whiteboard,
             commands::rename_whiteboard,

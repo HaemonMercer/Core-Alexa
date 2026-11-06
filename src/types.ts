@@ -41,6 +41,12 @@ export interface PlacedCard {
     board: BoardState;
 }
 
+export interface DataLocationInfo {
+    path: string;
+    /** 選的位置打不開，暫時改用預設位置時才有值。 */
+    unavailable: string | null;
+}
+
 export interface CreatedWhiteboard {
     placedId: string;
     board: BoardState;

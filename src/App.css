@@ -141,6 +141,13 @@ canvas.dragging {
 }
 .left-panel-item:hover { background: var(--line); }
 .left-panel-item[aria-current="page"] { color: #fff; background: var(--accent); }
+.left-panel-foot { margin-top: auto; color: #57606a; }
+.data-location { width: 460px; }
+.data-location-path {
+  display: block; margin: 0 0 12px; padding: 6px 8px; font-size: 12px; overflow-wrap: anywhere;
+  background: var(--bg); border-radius: 6px;
+}
+.data-location-warning { color: #a32d2d !important; }
 
 .workspace-pane {
   position: relative; flex: 1; min-width: 0;
