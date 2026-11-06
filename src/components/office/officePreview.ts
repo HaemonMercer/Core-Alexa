@@ -75,7 +75,7 @@ const WRITER_STYLE: Record<string, { size: number; weight: number; gap: number }
     h3: { size: 14, weight: 700, gap: 4 },
 };
 
-const EMBED_LABELS: Record<string, string> = { cells: "引入的格子", chart: "圖表", image: "圖片", table: "表格", toc: "目錄" };
+const EMBED_LABELS: Record<string, string> = { cells: "引入的格子", chart: "圖表", image: "圖片", table: "表格", toc: "目錄", card: "卡片" };
 
 const BULLETS: Record<string, string> = { bullet: "•", number: "•", todo: "☐", toggle: "▸" };
 
@@ -193,12 +193,12 @@ async function paintElement(ctx: CanvasRenderingContext2D, element: SlideElement
         ctx.drawImage(await loadImage(`data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`), x, y, w, h);
         return;
     }
-    if (element.kind === "cells") {
+    if (element.kind === "cells" || element.kind === "card") {
         ctx.strokeStyle = LINE;
         ctx.strokeRect(x, y, w, h);
         ctx.fillStyle = MUTED;
         ctx.font = `24px ${FONT}`;
-        ctx.fillText("引入的格子", x + 16, y + 16);
+        ctx.fillText(element.kind === "card" ? "卡片" : "引入的格子", x + 16, y + 16);
         return;
     }
     if (element.kind === "shape") {

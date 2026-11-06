@@ -6,6 +6,8 @@ import { cardTitle, isNewCardTitle, noteHref } from "../../markdown/noteLink.ts"
 import type { BlockSide, CardMatch, CellRange, Note, WriterBlock, WriterOp, WriterPage } from "../../types.ts";
 import type { EditorPlacement } from "../cards/editorPlacement.ts";
 import CardPicker from "../cards/CardPicker.tsx";
+import { useCardSurface, type CardSurface } from "../cards/cardSurface.ts";
+import PlacedCard from "../cards/PlacedCard.tsx";
 import ChartView from "../chart/ChartView.tsx";
 import { fenceToLanguage, languageToFence } from "../code/languages.ts";
 import LanguageSelect from "../code/LanguageSelect.tsx";
@@ -18,6 +20,7 @@ import {
     caretOffset, caretOnEdgeLine, markEmpty, paintCode, rangeOf, readText, renderText, setCaret, splitAtCaret, wrapSelectionInCode,
 } from "./inline.ts";
 import { cellsFromHtml, isSingleCell } from "../office/cellClipboard.ts";
+import EmbeddedNote from "./EmbeddedNote.tsx";
 import LinkedTable from "./LinkedTable.tsx";
 import PageBands from "./PageBands.tsx";
 import PageSetup from "./PageSetup.tsx";
@@ -27,8 +30,8 @@ import { clipboardTable, emptyTable, type TableRows } from "./table.ts";
 import { fitScale, pageBox, printBox, sheetHeight } from "./pageFormat.ts";
 import { usePagination } from "./usePagination.ts";
 import {
-    blockGroup, blockRuns, columnAt, dropSide, filterCommands, findTrigger, hasText, indentLimit, isDividerMarker, listNumbers, MAX_COLUMNS, pastedLines, shortcutKind,
-    visibleBlocks, wordCount, type SlashCommand, type Trigger,
+    blockGroup, blockRuns, cardDropAt, columnAt, dropSide, filterCommands, findTrigger, hasText, indentLimit, isDividerMarker, listNumbers, MAX_COLUMNS, pastedLines, shortcutKind,
+    visibleBlocks, wordCount, type DropRow, type SlashCommand, type Trigger,
 } from "./rules.ts";
 
 const SAVE_DELAY_MS = 250;
@@ -39,7 +42,7 @@ const MENU_HEIGHT = 300;
 const NO_MENU_KINDS = ["code"];
 /** 紙和編輯區左右邊緣的距離，要和 `.writer-page` 的外距一致。 */
 const SHEET_GUTTER = 16;
-const HEADINGS = ["h1", "h2", "h3"];
+const HEADING_ROWS = ["h1", "h2", "h3"].map((kind) => `.writer-row[data-kind="${kind}"]`).join(", ");
 /** 列印時留一點，紙的高度捨入後才不會多出一張空白頁。 */
 const PRINT_SLACK = 1;
 const ALIGN_KEYS: Record<string, string> = { l: "", e: "center", r: "right", j: "justify" };
@@ -60,6 +63,14 @@ interface WriterEditorProps {
     draft?: boolean;
     /** Note：沒有紙、名稱、分欄和對齊，內容會變成 Markdown。 */
     card?: boolean;
+    /** 放在另一份文件裡的 Note：沒有把手和捲軸，跟著文件的分頁。 */
+    embedded?: boolean;
+    /** 別處改了這張 Note 時遞增。正在這裡打字時不重讀。 */
+    revisionFromOutside?: number;
+    /** 文件裡的 Note 改了內容。 */
+    onCardChanged?: (id: string) => void;
+    /** 內容讀完或打字後呼叫。外面的文件要重算目錄，Note 的標題也算在內。 */
+    onContentChange?: () => void;
     /** 浮在白板的卡片上就地編輯。 */
     placement?: EditorPlacement;
     /** `placement` 的左右與下內距。 */
@@ -70,6 +81,12 @@ interface WriterEditorProps {
     onCardCreated?: () => void;
     /** 版面設定的按鈕放在這裡，不佔文件的空間。 */
     toolsSlot?: HTMLElement | null;
+    /** 放在文件裡的卡片要跟著更新。 */
+    cardRevision?: number;
+    /** 全螢幕時像白板一樣可以放卡片。 */
+    onSurface?: (surface: CardSurface | null) => void;
+    /** 雙擊放在文件裡的卡片。 */
+    onPeekCard?: (id: string) => void;
     /** 內容改變後通知 Library 與白板重新讀取。 */
     onChanged: () => void;
     onOpenLink: (href: string) => void;
@@ -91,8 +108,8 @@ interface TocEntry {
 }
 
 interface EmbedRequest {
-    type: "cells" | "chart" | "image" | "table";
-    after: string;
+    type: "cells" | "chart" | "image" | "table" | "card";
+    after: string | null;
     /** 指令打在空區塊上時，引入內容取代它。 */
     replace: boolean;
 }
@@ -163,10 +180,12 @@ const PLACEHOLDERS: Record<string, string> = {
 
 /** 版面像 Word：內容排在選定大小的紙上。編輯方式參考 Notion：每一段都是區塊，用 / 換類型，用左邊的把手拖曳。 */
 function WriterEditor({
-    noteID, draft: narrow = false, card = false, placement, padding, toolsSlot, onChanged, onOpenLink, onClose, onCardCreated, onError,
+    noteID, draft: narrow = false, card = false, embedded = false, revisionFromOutside, placement, padding, toolsSlot, cardRevision, onSurface, onPeekCard, onCardChanged, onContentChange, onChanged, onOpenLink, onClose, onCardCreated, onError,
 }: WriterEditorProps) {
     const draft = narrow || card;
     const inline = placement !== undefined;
+    /** 就地編輯：開啟就有游標，點到外面或按 Esc 離開。 */
+    const closable = inline || (embedded && onClose !== undefined);
     const changedRef = useRef(onChanged);
     changedRef.current = onChanged;
     const closeRef = useRef(onClose);
@@ -252,7 +271,7 @@ function WriterEditor({
         Promise.all([api.getWriter(noteID), card ? null : api.getWriterPage(noteID)])
             .then(([next, nextPage]) => {
                 // 就地編輯一打開就能打字。
-                if (inline && !opened.current) {
+                if (closable && !opened.current) {
                     const last = next.filter((block) => hasText(block.kind)).pop();
                     if (last) focusRequest.current = { id: last.id, offset: "end" };
                 }
@@ -262,9 +281,16 @@ function WriterEditor({
                 setRevision((value) => value + 1);
             })
             .catch(onError);
-    }, [noteID, card, inline, onError]);
+    }, [noteID, card, closable, onError]);
 
     useEffect(load, [load]);
+
+    const outsideRevision = useRef(revisionFromOutside);
+    useEffect(() => {
+        if (outsideRevision.current === revisionFromOutside) return;
+        outsideRevision.current = revisionFromOutside;
+        if (!root.current?.contains(document.activeElement)) load();
+    }, [revisionFromOutside, load]);
 
     useEffect(() => {
         if (!blocks?.some((block) => block.kind === "image")) return;
@@ -281,13 +307,13 @@ function WriterEditor({
 
     // 焦點會在區塊之間移動，點圖片也沒有焦點，所以用點到外面判斷離開。
     useEffect(() => {
-        if (!inline) return;
+        if (!closable) return;
         const onPointerDown = (evt: globalThis.PointerEvent) => {
             if (!(evt.target as Element).closest?.(INLINE_AREA)) closeRef.current?.();
         };
         window.addEventListener("pointerdown", onPointerDown, true);
         return () => window.removeEventListener("pointerdown", onPointerDown, true);
-    }, [inline]);
+    }, [closable]);
 
     const apply = useCallback((op: WriterOp, focus?: { id: string; offset: number | "end" }) => {
         flush();
@@ -348,16 +374,18 @@ function WriterEditor({
     refreshContent.current = () => {
         const host = sheet.current;
         if (!host || !blocks) return;
+        onContentChange?.();
         const text = [...host.querySelectorAll(".writer-text, .writer-cell")].map((element) => element.textContent ?? "").join(" ");
         setWords(wordCount(text));
         if (!blocks.some((block) => block.kind === "toc")) return;
         const top = host.getBoundingClientRect().top;
-        const entries = blocks.flatMap((block) => {
-            const row = HEADINGS.includes(block.kind) ? host.querySelector<HTMLElement>(`.writer-row[data-id="${block.id}"]`) : null;
-            if (!row) return [];
-            const page = box ? Math.floor((row.getBoundingClientRect().top - top) / scale / box.pitch) + 1 : null;
-            return [{ id: block.id, level: block.kind, text: elements.current.get(block.id)?.textContent ?? "", page }];
-        });
+        // 從畫面上讀，放進來的 Note 的標題才會照順序排進來。
+        const entries = [...host.querySelectorAll<HTMLElement>(HEADING_ROWS)].map((row) => ({
+            id: row.dataset.id ?? "",
+            level: row.dataset.kind ?? "",
+            text: row.querySelector(".writer-text")?.textContent ?? "",
+            page: box ? Math.floor((row.getBoundingClientRect().top - top) / scale / box.pitch) + 1 : null,
+        }));
         setToc((current) => (JSON.stringify(current) === JSON.stringify(entries) ? current : entries));
     };
 
@@ -516,7 +544,7 @@ function WriterEditor({
         void apply({ op: "patch", id, kind: command.id }, { id, offset: "end" });
     };
 
-    const insertEmbed = async (request: EmbedRequest, target: { source?: CellRange; target?: string; table?: TableRows }) => {
+    const insertEmbed = async (request: EmbedRequest, target: { source?: CellRange; target?: string; table?: TableRows; indent?: number; leaveColumns?: boolean }) => {
         setEmbed(null);
         const edit = await apply({ op: "addBlock", after: request.after, kind: request.type, ...target });
         if (!edit?.focus) return;
@@ -525,7 +553,7 @@ function WriterEditor({
         // 引入內容不能放游標，最後要留一段可以繼續打字。
         const tail = last.id === added ? await apply({ op: "addBlock", after: last.id, kind: "paragraph", indent: 0 }) : null;
         const stay = tail?.focus ? { id: tail.focus.id, offset: 0 } : undefined;
-        if (request.replace) await apply({ op: "delete", ids: [request.after] }, stay);
+        if (request.replace && request.after) await apply({ op: "delete", ids: [request.after] }, stay);
         if (request.type === "table") {
             focusRequest.current = { id: added, offset: 0 };
             setRevision((value) => value + 1);
@@ -637,8 +665,9 @@ function WriterEditor({
             return;
         }
 
-        if (inline && evt.key === "Escape") {
+        if (closable && evt.key === "Escape") {
             evt.preventDefault();
+            evt.stopPropagation();
             closeRef.current?.();
             return;
         }
@@ -796,7 +825,7 @@ function WriterEditor({
     };
 
     const goToHeading = (id: string) => {
-        const element = elements.current.get(id);
+        const element = sheet.current?.querySelector<HTMLElement>(`.writer-row[data-id="${id}"] .writer-text`);
         if (!element) return;
         setCaret(element, "end");
         element.scrollIntoView({ block: "center" });
@@ -843,7 +872,9 @@ function WriterEditor({
             if (linkDraft !== null) return;
             const selection = window.getSelection();
             const anchor = selection?.anchorNode;
-            const inside = anchor && root.current?.contains(anchor) && (anchor instanceof Element ? anchor : anchor.parentElement)?.closest(".writer-text");
+            const holder = anchor instanceof Element ? anchor : anchor?.parentElement;
+            // 文件裡的 Note 有自己的編輯器和工具列。
+            const inside = holder?.closest(".writer-editor") === root.current && holder?.closest(".writer-text");
             if (!selection || !inside || selection.isCollapsed || !selection.rangeCount) {
                 setToolbar(null);
                 return;
@@ -975,6 +1006,79 @@ function WriterEditor({
         else void apply({ op: "addBlock", after: last.id, kind: "paragraph", indent: 0 });
     };
 
+    /** 版面上的每一列，由上到下。 */
+    const dropRows = (): DropRow[] => {
+        const list = root.current?.querySelector(".writer-blocks");
+        return ([...(list?.children ?? [])] as HTMLElement[]).map((row) => {
+            const inner = row.classList.contains("writer-columns") ? [...row.querySelectorAll<HTMLElement>(".writer-row")] : [row];
+            const box = row.getBoundingClientRect();
+            const first = inner[0]?.dataset.id ?? "";
+            const text = elements.current.get(first);
+            return {
+                first,
+                last: inner[inner.length - 1]?.dataset.id ?? "",
+                top: box.top,
+                bottom: box.bottom,
+                empty: row.dataset.kind === "paragraph" && text !== undefined && !text.textContent,
+                columns: inner.length > 1 || row.classList.contains("writer-columns"),
+            };
+        });
+    };
+
+    const insideEditor = (x: number, y: number) => {
+        const host = root.current;
+        return host !== null && host.contains(document.elementFromPoint(x, y));
+    };
+
+    /** 表格連回 Excels，圖表跟著來源，其他是卡片。整份 Excels 放第一個表格。 */
+    const dropCard = async (noteID: string, y: number, tableID?: string) => {
+        const { after, replace, leaveColumns } = cardDropAt(dropRows(), y);
+        const place = { indent: 0, leaveColumns };
+        try {
+            const note = await api.getNote(noteID);
+            if (note?.type === "chart") {
+                await insertEmbed({ type: "chart", after, replace }, { target: noteID, ...place });
+            } else if (note?.type === "sheet") {
+                const { tables } = await api.getSheet(noteID);
+                const table = tables.find((item) => item.id === tableID) ?? tables[0];
+                if (!table) return;
+                const source = { noteId: noteID, tableId: table.id, rows: table.rows.map((row) => row.id), cols: table.cols.map((col) => col.id) };
+                await insertEmbed({ type: "cells", after, replace }, { source, ...place });
+            } else {
+                await insertEmbed({ type: "card", after, replace }, { target: noteID, ...place });
+            }
+        } catch (error) {
+            onError(error);
+        }
+    };
+
+    const placedCards = useMemo(
+        () => new Set((blocks ?? []).flatMap((block) => (block.kind === "card" && block.noteId ? [block.noteId] : []))),
+        [blocks],
+    );
+
+    useCardSurface(onSurface, "文件", placedCards, {
+        placeAt: (id, x, y, tableID) => {
+            if (insideEditor(x, y)) void dropCard(id, y, tableID);
+        },
+        placeAtCenter: (id, tableID) => void dropCard(id, Number.POSITIVE_INFINITY, tableID),
+        hover: (point) => {
+            const host = root.current;
+            const list = host?.querySelector(".writer-blocks");
+            if (!point || !host || !list || !insideEditor(point.x, point.y)) {
+                setDrop(null);
+                return;
+            }
+            const hostBox = host.getBoundingClientRect();
+            const box = list.getBoundingClientRect();
+            setDrop({
+                top: cardDropAt(dropRows(), point.y).line - hostBox.top + host.scrollTop,
+                left: box.left - hostBox.left,
+                width: box.width,
+            });
+        },
+    }, true);
+
     if (!blocks || (!page && !card)) return inline ? null : <div className="writer-editor" />;
     const numbers = listNumbers(blocks);
     const visible = visibleBlocks(blocks);
@@ -986,7 +1090,7 @@ function WriterEditor({
     /** 文字和圖片可以對齊。 */
     const alignItems = (id: string) => {
         const kind = blocks.find((block) => block.id === id)?.kind ?? "";
-        if (card || (!hasText(kind) && kind !== "image")) return [];
+        if (card || (!hasText(kind) && kind !== "image" && kind !== "card")) return [];
         return ALIGNS.filter((item) => hasText(kind) || item.id !== "justify").map(({ id: align, label }) => ({
             label,
             onSelect: () => void apply({ op: "patch", id, align }),
@@ -1090,6 +1194,41 @@ function WriterEditor({
             {block.kind === "chart" && block.noteId && (
                 <div className="writer-embed writer-chart"><ChartView noteID={block.noteId} revision={sheetRevision} onError={onError} /></div>
             )}
+            {block.kind === "card" && block.noteId && (
+                <div
+                    className="writer-image-frame writer-card"
+                    data-sized={block.width !== null}
+                    style={block.width !== null ? { width: `${block.width}%` } : undefined}
+                    // Note 裡要能選字，只有其他類型靠拖曳本身搬移。Note 用左邊的把手。
+                    onPointerDown={(evt) => {
+                        if (!(evt.target as Element).closest(".writer-editor")?.isSameNode(root.current)) return;
+                        startDrag(evt, block.id, false);
+                    }}
+                    onPointerMove={moveDrag}
+                    onPointerUp={(evt) => endDrag(evt, block.id)}
+                    onDoubleClick={(evt) => {
+                        if ((evt.target as Element).closest(".writer-editor")?.isSameNode(root.current)) onPeekCard?.(block.noteId ?? "");
+                    }}
+                >
+                    <PlacedCard
+                        noteID={block.noteId}
+                        revision={cardRevision}
+                        renderNote={(id) => (
+                            <EmbeddedNote
+                                noteID={id}
+                                revision={cardRevision}
+                                onChanged={(changed) => onCardChanged?.(changed)}
+                                onContentChange={() => refreshContent.current()}
+                                onOpenLink={onOpenLink}
+                                onCardCreated={onCardCreated}
+                                onError={onError}
+                            />
+                        )}
+                        onError={onError}
+                    />
+                    <span className="writer-image-resize" title="拖曳調整大小" onPointerDown={(evt) => startResize(evt, block)} />
+                </div>
+            )}
             {block.kind === "image" && block.noteId && (() => {
                 const note = images.get(block.noteId);
                 const info = note ? imageInfo(note) : null;
@@ -1114,7 +1253,7 @@ function WriterEditor({
     );
 
     /** 白板的編輯器有縮放，選單用的是視窗座標，要放到外面。 */
-    const floating = (content: React.ReactNode) => (inline ? createPortal(content, document.body) : content);
+    const floating = (content: React.ReactNode) => (inline || embedded ? createPortal(content, document.body) : content);
 
     return (
         <div
@@ -1122,6 +1261,7 @@ function WriterEditor({
             className="writer-editor"
             data-card={card || undefined}
             data-inline={inline || undefined}
+            data-embedded={embedded || undefined}
             data-fit={placement?.fitContent || undefined}
             style={placement && {
                 left: placement.left,
@@ -1282,7 +1422,9 @@ function WriterEditor({
                     x={blockMenu.x}
                     y={blockMenu.y}
                     items={[
-                        { label: "複製區塊", onSelect: () => void apply({ op: "duplicate", id: blockMenu.id }) },
+                        ...(blocks.find((block) => block.id === blockMenu.id)?.kind === "card"
+                            ? []
+                            : [{ label: "複製區塊", onSelect: () => void apply({ op: "duplicate", id: blockMenu.id }) }]),
                         { label: "刪除區塊", onSelect: () => void apply({ op: "delete", ids: [blockMenu.id] }) },
                         ...columnItems(blockMenu.id),
                         ...alignItems(blockMenu.id),

@@ -73,6 +73,16 @@ pub(super) fn plain_inline(text: &str) -> String {
 }
 
 impl Alexa {
+    /// Writer、Slides、Excels 可以放的筆記：Card Library 裡的內容。文件不能放文件。
+    pub(super) fn check_placeable(&self, target: Option<&str>) -> Result<(), String> {
+        let target = target.ok_or("沒有指定卡片")?;
+        match self.note_type(target).as_deref() {
+            None => Err(format!("unknown note: {target}")),
+            Some("writer" | "sheet" | "slides" | "chart") => Err("Office 文件不能當成卡片放置".to_string()),
+            Some(_) => Ok(()),
+        }
+    }
+
     pub(super) fn check_type(&self, note_id: &str, kind: NoteType) -> Result<(), String> {
         if self.note_type(note_id).as_deref() != Some(kind.as_str()) {
             return Err(format!("not a {}: {note_id}", kind.as_str()));
@@ -304,6 +314,14 @@ impl Alexa {
                 for slide in self.slides(note_id)?.slides {
                     for element in slide.elements {
                         add(&mut found, element.note_id.clone(), element.source.as_ref());
+                    }
+                }
+            }
+            Some("sheet") => {
+                // 圖表是 Excels 自己產生的，只有放上來的卡片才算引入。
+                for object in self.sheet(note_id)?.objects {
+                    if object.note_type != "chart" {
+                        add(&mut found, Some(object.note_id), None);
                     }
                 }
             }

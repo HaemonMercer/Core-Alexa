@@ -107,7 +107,6 @@ canvas.dragging {
 .right-panel-preview .card-preview {
   padding: 16px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px;
 }
-.panel-editor { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 8px; }
 .card-links {
   flex: 0 1 auto; max-height: 40%; min-height: 0; overflow: auto;
   margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--line);
@@ -136,13 +135,6 @@ canvas.dragging {
 .card-picker button[aria-selected="true"] { color: #fff; background: var(--accent); }
 .card-picker button[aria-selected="true"] .card-link-source { color: inherit; }
 .card-picker .library-empty { padding: 6px 10px; }
-.panel-editor .note-format-bar { position: static; flex-wrap: wrap; box-shadow: none; }
-.panel-editor .note-link-input { width: 100%; }
-.panel-editor .note-editor {
-  position: static; flex: 1; min-height: 0; outline: 0;
-  border: 1px solid var(--line); box-shadow: none;
-}
-.panel-editor .note-editor:focus { outline: 2px solid var(--accent); outline-offset: -2px; }
 .left-panel-item {
   padding: 7px 10px; font: inherit; color: inherit; text-align: left; cursor: pointer;
   background: none; border: 0; border-radius: 6px;
@@ -155,6 +147,30 @@ canvas.dragging {
   display: flex; flex-direction: column; background: var(--surface);
 }
 .canvas-pane { position: relative; flex: 1; min-height: 0; overflow: hidden; }
+/* 全螢幕只蓋住這裡，分頁列留著才能切換。 */
+.tab-content { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.tab-bar {
+  flex: 0 0 34px; display: flex; align-items: flex-end; gap: 4px; min-width: 0; padding: 4px 8px 0;
+  background: var(--bg); border-bottom: 1px solid var(--line); user-select: none;
+}
+.tab-list { flex: 0 1 auto; display: flex; gap: 2px; min-width: 0; overflow: hidden; }
+.tab {
+  flex: 0 1 auto; display: flex; align-items: center; gap: 4px; width: 180px; min-width: 56px; height: 29px;
+  margin-bottom: -1px; padding: 0 6px 0 10px; font-size: 13px; color: #57606a; cursor: pointer;
+  border: 1px solid transparent; border-bottom: 0; border-radius: 7px 7px 0 0; touch-action: none;
+}
+.tab:hover { background: var(--line); }
+.tab[aria-selected="true"] { color: var(--ink); background: var(--surface); border-color: var(--line); }
+.tab:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.tab-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tab-close, .tab-add {
+  flex: none; padding: 0; font: inherit; line-height: 1; color: #57606a; cursor: pointer;
+  background: none; border: 0; border-radius: 4px;
+}
+.tab-close { width: 18px; height: 18px; visibility: hidden; }
+.tab:is(:hover, [aria-selected="true"]) .tab-close { visibility: visible; }
+.tab-add { width: 24px; height: 24px; margin-bottom: 3px; font-size: 16px; }
+.tab-close:hover, .tab-add:hover { color: var(--ink); background: rgba(0, 0, 0, 0.08); }
 .card-fullscreen {
   position: absolute; z-index: 4; inset: 0; display: flex; flex-direction: column;
   padding: 12px max(24px, calc(50% - 430px)); background: var(--surface);
@@ -293,47 +309,37 @@ button.tree-toggle:hover { background: var(--line); }
 }
 
 /* 字級、行高與間距要和 components/noteLayout.ts 保持一致。 */
-.note-editor {
-  position: fixed; z-index: 3; margin: 0; overflow: auto;
-  transform-origin: top left;
-  font: 14px/20px "Segoe UI", "Microsoft JhengHei", sans-serif;
-  color: var(--ink); background: var(--surface); border-radius: 8px;
-  outline: 2px solid var(--accent); outline-offset: -2px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-  white-space: pre-wrap; overflow-wrap: anywhere;
-  scrollbar-width: none; cursor: text;
-}
-:is(.note-editor, .card-preview) :is(p, h1, h2, h3, h4, h5, h6, pre, blockquote, ul, ol, hr) { margin: 0; }
-:is(.note-editor, .card-preview) :is(p, h1, h2, h3, h4, h5, h6, pre, blockquote, ul, ol, hr)
+.card-preview :is(p, h1, h2, h3, h4, h5, h6, pre, blockquote, ul, ol, hr) { margin: 0; }
+.card-preview :is(p, h1, h2, h3, h4, h5, h6, pre, blockquote, ul, ol, hr)
   + :is(p, h1, h2, h3, h4, h5, h6, pre, blockquote, ul, ol, hr) { margin-top: 6px; }
-:is(.note-editor, .card-preview) li > :not(:first-child) { margin-top: 2px; }
-:is(.note-editor, .card-preview) li + li { margin-top: 2px; }
-:is(.note-editor, .card-preview) ul > li::marker { content: "•  "; }
-:is(.note-editor, .card-preview) ul ul > li::marker { content: "◦  "; }
-:is(.note-editor, .card-preview) ul ul ul > li::marker { content: "▪  "; }
-:is(.note-editor, .card-preview) h1 {
+.card-preview li > :not(:first-child) { margin-top: 2px; }
+.card-preview li + li { margin-top: 2px; }
+.card-preview ul > li::marker { content: "•  "; }
+.card-preview ul ul > li::marker { content: "◦  "; }
+.card-preview ul ul ul > li::marker { content: "▪  "; }
+.card-preview h1 {
   position: static; transform: none; pointer-events: auto; color: inherit;
   font-size: 22px; line-height: 30px;
 }
-:is(.note-editor, .card-preview) h2 { font-size: 19px; line-height: 26px; }
-:is(.note-editor, .card-preview) h3 { font-size: 16px; line-height: 22px; }
-:is(.note-editor, .card-preview) :is(h4, h5, h6) { font-size: 14px; line-height: 20px; }
-:is(.note-editor, .card-preview) code {
+.card-preview h2 { font-size: 19px; line-height: 26px; }
+.card-preview h3 { font-size: 16px; line-height: 22px; }
+.card-preview :is(h4, h5, h6) { font-size: 14px; line-height: 20px; }
+.card-preview code {
   font-family: "Cascadia Code", Consolas, "Microsoft JhengHei", monospace; font-size: 13px;
   line-height: 0; background: rgba(0, 0, 0, 0.07);
 }
-:is(.note-editor, .card-preview) pre {
+.card-preview pre {
   padding: 6px 8px; line-height: 18px; white-space: pre-wrap; tab-size: 4;
   background: rgba(0, 0, 0, 0.07);
 }
-:is(.note-editor, .card-preview) pre code { background: none; }
-:is(.note-editor, .card-preview) blockquote {
+.card-preview pre code { background: none; }
+.card-preview blockquote {
   padding-left: 10px; color: #57606a;
   border-left: 3px solid rgba(0, 0, 0, 0.2);
 }
-:is(.note-editor, .card-preview) :is(ul, ol) { padding-left: 22px; }
-:is(.note-editor, .card-preview) hr { height: 1px; border: 0; background: rgba(0, 0, 0, 0.25); }
-:is(.note-editor, .card-preview) a { color: var(--accent); }
+.card-preview :is(ul, ol) { padding-left: 22px; }
+.card-preview hr { height: 1px; border: 0; background: rgba(0, 0, 0, 0.25); }
+.card-preview a { color: var(--accent); }
 .card-preview li[data-marker] { position: relative; }
 .card-preview ul > li[data-marker]::marker { content: ""; }
 .card-preview li[data-marker]::before { content: attr(data-marker); position: absolute; left: -18px; }
@@ -371,6 +377,57 @@ button.tree-toggle:hover { background: var(--line); }
 .right-panel .type-filter { padding: 0 12px; }
 .type-filter button { padding: 2px 10px; border: 1px solid #e2e0db; border-radius: 12px; background: none; color: inherit; font: inherit; font-size: 13px; cursor: pointer; }
 .type-filter button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+
+.tag-chip {
+  display: inline-flex; align-items: center; gap: 2px; min-width: 0; max-width: 160px; padding: 0 8px;
+  font-size: 12px; line-height: 20px; color: var(--tag-ink); background: var(--tag-soft); border-radius: 10px;
+}
+.tag-chip-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tag-chip-remove {
+  flex: none; width: 14px; height: 14px; margin-right: -4px; padding: 0; font: inherit; line-height: 12px;
+  color: inherit; cursor: pointer; background: none; border: 0; border-radius: 7px;
+}
+.tag-chip-remove:hover { background: rgba(0, 0, 0, 0.1); }
+.tag-dot {
+  flex: none; display: inline-block; width: 8px; height: 8px; margin-right: 5px;
+  background: var(--tag-solid); border-radius: 50%;
+}
+.tag-count { margin-left: 6px; font-size: 12px; color: #57606a; }
+.type-filter button .tag-count { margin-left: 5px; }
+
+.note-tags {
+  position: absolute; left: 8px; right: 8px; bottom: 6px; display: flex; justify-content: flex-end; gap: 4px;
+  overflow: hidden; pointer-events: none;
+}
+.sheet-tile[data-open="true"] > .note-tags { display: none; }
+.card-shelf > li:has(> .sheet-toggle) > .note-tags { left: auto; max-width: 50%; }
+
+.tag-bar { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 4px; padding-bottom: 8px; }
+.tag-input { position: relative; flex: 0 1 96px; min-width: 64px; }
+.tag-input input {
+  width: 100%; box-sizing: border-box; padding: 0 6px; font-size: 12px; line-height: 20px; color: inherit;
+  background: none; border: 1px solid transparent; border-radius: 6px; outline: none;
+}
+.tag-input input:hover { border-color: var(--line); }
+.tag-input input:focus { background: var(--surface); border-color: var(--accent); }
+.tag-options {
+  position: absolute; z-index: 5; top: calc(100% + 4px); left: 0; width: 210px; margin: 0; padding: 4px;
+  list-style: none; background: var(--surface); border: 1px solid var(--line); border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+}
+.tag-options li {
+  display: flex; align-items: center; padding: 4px 8px; font-size: 13px; cursor: pointer; border-radius: 5px;
+}
+.tag-options li[aria-selected="true"] { background: var(--bg); }
+.tag-options .tag-count { margin-left: auto; padding-left: 8px; }
+
+.tag-detail { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-bottom: 12px; }
+.tag-swatches { display: flex; gap: 6px; }
+.tag-swatch {
+  width: 18px; height: 18px; padding: 0; cursor: pointer; background: var(--tag-solid);
+  border: 2px solid var(--surface); border-radius: 50%; box-shadow: 0 0 0 1px var(--line);
+}
+.tag-swatch[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--tag-solid); }
 
 .mermaid-image { display: block; max-width: 100%; max-height: 240px; margin: 0 auto; }
 :is(.card-grid, .card-shelf, .card-drag-ghost) :is(.mermaid-image, .note-image) { max-height: 88px; }
@@ -620,6 +677,30 @@ button.tree-toggle:hover { background: var(--line); }
 .writer-image-resize { position: absolute; right: -5px; bottom: -5px; width: 10px; height: 10px; cursor: nwse-resize; touch-action: none; opacity: 0; background: var(--accent); border: 1px solid #fff; }
 .writer-row[data-align="right"] .writer-image-resize { right: auto; left: -5px; cursor: nesw-resize; }
 .writer-image-frame:hover .writer-image-resize { opacity: 1; }
+/* 放在文件裡的卡片沒有底色和框，透出文件、投影片或工作表本身。 */
+.placed-card { box-sizing: border-box; min-width: 0; padding: 10px 12px; overflow: hidden; user-select: none; background: none; }
+.placed-card :is(.mermaid-image, .note-image) { max-height: 100%; }
+.writer-card { flex: 1 1 100%; cursor: grab; touch-action: none; max-height: calc(var(--writer-page-content, 100000px) - 12px); --writer-break: 0px; }
+.writer-card[data-sized="true"] { flex: 0 1 auto; }
+/* 放進 Writer 的筆記是文件的一段：沒有卡片的框。Note 用同一個區塊編輯器，字和間距自然一樣，每個區塊各自跨頁。 */
+.writer-card .placed-card { max-height: inherit; padding: 0; }
+.writer-card:has(.placed-card[data-type="card"]) { max-height: none; cursor: auto; touch-action: auto; }
+.writer-card .placed-card[data-type="card"] { max-height: none; overflow: visible; user-select: auto; }
+.writer-card .writer-row { --writer-break: var(--writer-row-break, 0px); }
+.writer-card .writer-row > * { --writer-row-break: 0px; }
+.writer-editor[data-embedded] { flex: none; min-height: 0; overflow: visible; background: none; border: 0; border-radius: 0; }
+.writer-editor[data-embedded] .writer-page { min-height: 0; margin: 0; padding: 0; background: none; box-shadow: none; }
+.writer-editor[data-embedded] .writer-bottom, .writer-editor[data-embedded] .writer-handles { display: none; }
+.writer-row[data-align="center"][data-kind="card"] { justify-content: center; }
+.writer-row[data-align="right"][data-kind="card"] { justify-content: flex-end; }
+.slide-element .placed-card { flex: 1; width: 100%; min-height: 0; }
+.slide-element .placed-card :is(.card-preview, .code-preview) { zoom: 1.6; }
+.sheet-object .placed-card { height: 100%; }
+.sheet-object:has(.placed-card) { background: none; border-color: transparent; }
+/* Slides 和 Excels 的 Note 大小固定，編輯時內容太長就在裡面捲動。 */
+.slide-element .placed-card:has(.writer-editor), .sheet-object .placed-card:has(.writer-editor) { overflow: auto; user-select: auto; }
+.slide-element .writer-editor[data-embedded] { zoom: 1.6; }
+.slides-stage-host .slide-element:has(.writer-editor), .sheet-object:has(.writer-editor) { cursor: auto; touch-action: auto; }
 .writer-image-frame[data-sized="true"] .writer-image { width: 100%; max-height: calc(var(--writer-page-content, 100000px) - 12px); object-fit: contain; }
 .writer-page > .writer-bottom { flex: 1; min-height: 0; cursor: text; }
 /* 頁與頁的交界蓋在內容上面，跨頁的程式碼區塊背景才不會穿過去。 */

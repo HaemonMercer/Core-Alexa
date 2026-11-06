@@ -18,6 +18,7 @@ mod office;
 mod placements;
 mod sheet;
 mod slides;
+mod tags;
 mod types;
 mod whiteboards;
 mod writer;

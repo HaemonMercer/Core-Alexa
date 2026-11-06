@@ -15,6 +15,7 @@ import MermaidPreview from "../mermaid/MermaidPreview.tsx";
 import MindmapEditor from "../mindmap/MindmapEditor.tsx";
 import OfficeSummary from "../office/OfficeSummary.tsx";
 import WriterEditor from "../writer/WriterEditor.tsx";
+import TagBar from "../tags/TagBar.tsx";
 import PanelResizer from "./PanelResizer.tsx";
 
 
@@ -32,6 +33,8 @@ interface RightPanelProps {
     onWidthChange: (width: number) => void;
     /** 內容或箭頭改變時遞增，連結清單要重新計算。 */
     linksRevision: number;
+    /** 內容增減時遞增，Tag 要重新讀取。 */
+    cardsRevision: number;
     onChange: (id: string, content: string) => void;
     /** 心智圖這類內容不在 content 裡，改動後要重新讀取。 */
     onNoteChanged: () => void;
@@ -48,7 +51,7 @@ interface RightPanelProps {
 }
 
 function RightPanel({
-    card, editedElsewhere, library, collapsed, width, widthRange, otherWidth, onWidthChange, linksRevision,
+    card, editedElsewhere, library, collapsed, width, widthRange, otherWidth, onWidthChange, linksRevision, cardsRevision,
     onChange, onNoteChanged, onCardChanged, onCodeLanguageChange, onOpenLink, onOpenCard, onOpenFullscreen, onCloseCard, onCardCreated,
     onError, onToggle,
 }: RightPanelProps) {
@@ -80,6 +83,7 @@ function RightPanel({
                 {!card && library && "Library"}
                 {!library && "卡片"}
             </div>
+            {card && <TagBar noteID={card.id} revision={cardsRevision} onChanged={onNoteChanged} onError={onError} />}
             {!card && library}
             {!card && !library && <p className="library-empty right-panel-hint">選取卡片後可以在這裡編輯。</p>}
             {card?.type === "card" && editedElsewhere && (
@@ -136,7 +140,7 @@ function RightPanel({
             {card?.type === "drawio" && <DrawioViewer note={card} onEdit={() => onOpenFullscreen(card.id)} />}
             {card?.type === "video" && <VideoViewer key={card.id} note={card} />}
             {card?.type === "writer" && !editedElsewhere && (
-                <WriterEditor key={card.id} noteID={card.id} draft onChanged={onNoteChanged} onOpenLink={onOpenLink} onError={onError} />
+                <WriterEditor key={card.id} noteID={card.id} draft onCardChanged={onCardChanged} onCardCreated={onCardCreated} onChanged={onNoteChanged} onOpenLink={onOpenLink} onError={onError} />
             )}
             {card?.type === "chart" && !editedElsewhere && (
                 <ChartEditor key={card.id} noteID={card.id} onChanged={onNoteChanged} onError={onError} />

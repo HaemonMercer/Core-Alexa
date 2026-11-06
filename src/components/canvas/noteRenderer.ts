@@ -7,6 +7,7 @@ import { noteTypeLabel } from "../../noteTypes.ts";
 import type { Note, PlacedNote } from "../../types.ts";
 import { layoutBlocks, layoutCode, type DrawCommand } from "./noteLayout.ts";
 import type { PreviewImage } from "./notePreview.ts";
+import { tagColor } from "../tags/tagColors.ts";
 
 // 外觀要和 App.css 的卡片樣式保持一致，進出編輯時畫面才不會跳動。
 const DEFAULT_COLOR = "#ffffff";
@@ -27,6 +28,15 @@ export const SELECTED_COLOR = "#4f5bd5";
 const LAYOUT_CACHE_LIMIT = 500;
 const PLAY_BADGE_RADIUS = 24;
 const PLAY_BADGE_COLOR = "rgba(0, 0, 0, 0.55)";
+/** 色條從摺疊和全螢幕按鈕的右邊開始，高度落在標題列裡，選取時才不會被按鈕蓋住。 */
+const TAG_BAR_LEFT = 56;
+const TAG_BAR_TOP = 12;
+const TAG_BAR_WIDTH = 18;
+const TAG_BAR_HEIGHT = 5;
+const TAG_BAR_GAP = 4;
+/** 右上角的選單按鈕，以及 Code Block 置中的語言名稱，色條都要避開。 */
+const TAG_BAR_RIGHT_MARGIN = 40;
+const CODE_LABEL_HALF_WIDTH = 36;
 export const NOTE_PADDING = 16;
 /** 卡片上方額外留給按鈕的空間，內文不會被按鈕蓋住。編輯器的上內距要跟著一樣。 */
 export const CARD_HEADER_HEIGHT = 16;
@@ -198,6 +208,19 @@ function drawPlayBadge(ctx: CanvasRenderingContext2D, placed: PlacedNote) {
     ctx.fill();
 }
 
+/** 白板上放不下名稱，用色條表示；放不下的 Tag 不畫。 */
+function drawTagBars(ctx: CanvasRenderingContext2D, placed: PlacedNote, note: Note) {
+    const limit = note.type === "code" ? placed.w / 2 - CODE_LABEL_HALF_WIDTH : placed.w - TAG_BAR_RIGHT_MARGIN;
+    note.tags.forEach((tag, index) => {
+        const x = TAG_BAR_LEFT + index * (TAG_BAR_WIDTH + TAG_BAR_GAP);
+        if (x + TAG_BAR_WIDTH > limit) return;
+        ctx.fillStyle = tagColor(tag.color).solid;
+        ctx.beginPath();
+        ctx.roundRect(placed.x + x, placed.y + TAG_BAR_TOP, TAG_BAR_WIDTH, TAG_BAR_HEIGHT, TAG_BAR_HEIGHT / 2);
+        ctx.fill();
+    });
+}
+
 const markdownCommands = (ctx: CanvasRenderingContext2D, text: string, placed: PlacedNote) =>
     layoutFor(ctx, text, placed.w - NOTE_PADDING * 2).commands;
 
@@ -233,6 +256,8 @@ export function drawNote(
     } else {
         drawBox(ctx, placed, PLACEHOLDER_COLOR, CARD_BORDER, markdownCommands(ctx, headingOf(noteTypeLabel(note.type)), placed));
     }
+
+    if (note) drawTagBars(ctx, placed, note);
 
     if (selected) {
         ctx.strokeStyle = SELECTED_COLOR;

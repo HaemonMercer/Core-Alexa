@@ -959,6 +959,8 @@ fn 物件可以修改移動並調整上下層() {
         shape: Some("ellipse".to_string()),
         target: None,
         source: None,
+        x: None,
+        y: None,
     };
     let edit = alexa.edit_slides(&note, op).unwrap();
     let id = edit.created.unwrap();
@@ -1594,4 +1596,133 @@ mod series_rules {
     fn 今天是日期格式() {
         assert_eq!(today().len(), 10);
     }
+}
+
+fn add_card_block(alexa: &mut Alexa, note: &str, card: &str) -> Result<WriterEdit, String> {
+    let op = WriterOp::AddBlock {
+        after: None,
+        kind: "card".to_string(),
+        text: None,
+        indent: None,
+        target: Some(card.to_string()),
+        source: None,
+        language: None,
+        table: None,
+        leave_columns: false,
+    };
+    alexa.edit_writer(note, op)
+}
+
+fn add_card_element(alexa: &mut Alexa, note: &str, slide: &str, card: &str, at: Option<(f64, f64)>) -> Result<SlidesEdit, String> {
+    let op = SlidesOp::AddElement {
+        slide_id: slide.to_string(),
+        kind: "card".to_string(),
+        shape: None,
+        target: Some(card.to_string()),
+        source: None,
+        x: at.map(|point| point.0),
+        y: at.map(|point| point.1),
+    };
+    alexa.edit_slides(note, op)
+}
+
+#[test]
+fn 卡片放進_writer_是引用_同一份文件只放一次() {
+    let mut alexa = alexa();
+    let note = writer(&mut alexa);
+    let card = alexa.create_card("原本的內容").unwrap().id;
+
+    let first = add_card_block(&mut alexa, &note, &card).unwrap();
+    let id = first.focus.unwrap().id;
+    let again = add_card_block(&mut alexa, &note, &card).unwrap();
+    assert_eq!(again.focus.unwrap().id, id, "再放一次要回到原本的區塊");
+    let count = |blocks: &[WriterBlock]| blocks.iter().filter(|block| block.kind == "card").count();
+    assert_eq!(count(&alexa.writer(&note).unwrap()), 1);
+
+    let copy = alexa.edit_writer(&note, WriterOp::Duplicate { id: id.clone() }).unwrap();
+    assert_eq!(count(&copy.blocks), 1, "複製區塊不能繞過一份文件一次的規則");
+
+    let block = alexa.writer(&note).unwrap().into_iter().find(|block| block.id == id).unwrap();
+    assert_eq!(block.note_id.as_deref(), Some(card.as_str()));
+    assert_eq!(block.text, "", "卡片的內容不能複製進文件");
+}
+
+#[test]
+fn 文件不能當成卡片放置() {
+    let mut alexa = alexa();
+    let note = writer(&mut alexa);
+    let other = writer(&mut alexa);
+    assert!(add_card_block(&mut alexa, &note, &other).is_err());
+    assert!(add_card_block(&mut alexa, &note, "missing").is_err());
+}
+
+#[test]
+fn 卡片不能放進卡片() {
+    let mut alexa = alexa();
+    let card = alexa.create_card("外面").unwrap().id;
+    let inner = alexa.create_card("裡面").unwrap().id;
+    assert!(add_card_block(&mut alexa, &card, &inner).is_err());
+}
+
+#[test]
+fn 卡片放到投影片的位置_不超出畫面_每張投影片一次() {
+    let mut alexa = alexa();
+    let note = slides(&mut alexa);
+    let card = alexa.create_card("內容").unwrap().id;
+    let slide = alexa.slides(&note).unwrap().slides[0].id.clone();
+
+    let edit = add_card_element(&mut alexa, &note, &slide, &card, Some((640.0, 360.0))).unwrap();
+    let id = edit.created.unwrap();
+    let element = edit.state.slides[0].elements.iter().find(|item| item.id == id).unwrap().clone();
+    assert_eq!((element.x + element.w / 2.0, element.y + element.h / 2.0), (640.0, 360.0));
+
+    let again = add_card_element(&mut alexa, &note, &slide, &card, Some((10.0, 10.0))).unwrap();
+    assert_eq!(again.created.as_deref(), Some(id.as_str()));
+    let count = |state: &SlidesState, slide: usize| state.slides[slide].elements.iter().filter(|item| item.kind == "card").count();
+    assert_eq!(count(&again.state, 0), 1);
+
+    let copy = alexa.edit_slides(&note, SlidesOp::DuplicateElements { ids: vec![id] }).unwrap();
+    assert_eq!(count(&copy.state, 0), 1, "複製物件不能繞過一張投影片一次的規則");
+
+    let added = alexa.edit_slides(&note, SlidesOp::AddSlide { after: None, layout: "blank".to_string() }).unwrap();
+    let next = added.created.unwrap();
+    let edit = add_card_element(&mut alexa, &note, &next, &card, Some((0.0, 9999.0))).unwrap();
+    let element = edit.state.slides.iter().flat_map(|slide| &slide.elements).find(|item| item.slide_id == next && item.kind == "card").unwrap();
+    assert_eq!(element.x, 0.0);
+    assert_eq!(element.y + element.h, 720.0);
+}
+
+#[test]
+fn 卡片放到_excels_分頁_刪除後消失且不刪除卡片() {
+    let mut alexa = alexa();
+    let note = sheet(&mut alexa);
+    let card = alexa.create_card("內容").unwrap().id;
+    let state = alexa.sheet(&note).unwrap();
+    let tab = state.tabs[0].id.clone();
+    let place = |tab: &str, x| SheetOp::PlaceCard { tab_id: tab.to_string(), target: card.clone(), x, y: 300.0 };
+
+    let state = alexa.edit_sheet(&note, place(&tab, 500.0)).unwrap();
+    assert_eq!(state.objects.len(), 1);
+    assert_eq!(state.objects[0].note_type, "card");
+    assert_eq!(state.objects[0].note_id, card);
+
+    let state = alexa.edit_sheet(&note, place(&tab, 900.0)).unwrap();
+    assert_eq!(state.objects.len(), 1, "同一個分頁只放一次");
+
+    alexa.edit_sheet(&note, SheetOp::AddTab).unwrap();
+    let state = alexa.sheet(&note).unwrap();
+    let other = state.tabs.iter().find(|item| item.id != tab).unwrap().id.clone();
+    let state = alexa.edit_sheet(&note, place(&other, 500.0)).unwrap();
+    assert_eq!(state.objects.len(), 2);
+
+    let refs = alexa.mention_references().unwrap();
+    assert!(refs.iter().any(|reference| reference.from_id == note && reference.to_id == card), "卡片要看得到放在哪份 Excels");
+
+    let id = state.objects[0].id.clone();
+    let state = alexa.edit_sheet(&note, SheetOp::RemoveObject { id }).unwrap();
+    assert_eq!(state.objects.len(), 1);
+    assert!(alexa.note(&card).unwrap().is_some());
+
+    alexa.delete_notes(std::slice::from_ref(&card)).unwrap();
+    assert!(alexa.sheet(&note).unwrap().objects.is_empty());
 }

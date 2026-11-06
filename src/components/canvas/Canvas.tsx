@@ -54,12 +54,13 @@ interface CanvasProps {
     /** Root 只放白板：雙擊空白處新增白板，也不能貼上筆記。 */
     isRoot: boolean;
     onOpenWhiteboard: (id: string) => void;
+    onOpenWhiteboardInTab: (id: string) => void;
+    onOpenNoteInTab: (noteID: string) => void;
     onWorkspaceChange: (workspace: WorkspaceState) => void;
     /** 雙擊卡片：右側面板換成它的內容。 */
     onOpenCard: (noteID: string) => void;
     onOpenFullscreen: (noteID: string) => void;
     /** 換到這個白板：右側面板回到 Card Library。 */
-    onCloseCard: () => void;
     onCardCreated: () => void;
     onPlacedNotes: (noteIDs: ReadonlySet<string>) => void;
     onInlineEditChange: (noteID: string | null) => void;
@@ -80,10 +81,11 @@ function Canvas({
     whiteboardID,
     isRoot,
     onOpenWhiteboard,
+    onOpenWhiteboardInTab,
+    onOpenNoteInTab,
     onWorkspaceChange,
     onOpenCard,
     onOpenFullscreen,
-    onCloseCard,
     onCardCreated,
     onPlacedNotes,
     onInlineEditChange,
@@ -181,7 +183,6 @@ function Canvas({
             onWorkspaceChange,
             onOpenCard,
             onOpenFullscreen,
-            onCloseCard,
             onCardCreated,
             onLinksChange,
             onSelectionCount: setSelectedCount,
@@ -200,7 +201,7 @@ function Canvas({
         return () => controller.dispose();
     }, [
         whiteboardID, isRoot, onOpenWhiteboard, onWorkspaceChange,
-        onOpenCard, onOpenFullscreen, onCloseCard, onCardCreated, onPlacedNotes, onLinksChange, onError, trackImporting,
+        onOpenCard, onOpenFullscreen, onCardCreated, onPlacedNotes, onLinksChange, onError, trackImporting,
     ]);
 
     const noteMenuItems = (placed: PlacedNote) => {
@@ -210,6 +211,7 @@ function Canvas({
         if (note?.type === "whiteboard") {
             return [
                 { label: "開啟白板", onSelect: () => onOpenWhiteboard(noteID) },
+                { label: "在新分頁開啟", onSelect: () => onOpenWhiteboardInTab(noteID) },
                 {
                     label: "刪除白板",
                     onSelect: () => whiteboardDeletion.ask([{ id: noteID, name: note.content }]),
@@ -222,6 +224,7 @@ function Canvas({
             onSelect: () => controllerRef.current?.setAutoFit(id, !autoFit),
         };
         return [
+            { label: "在新分頁開啟", onSelect: () => onOpenNoteInTab(noteID) },
             ...(note.type === "card" || note.type === "code" ? [fit] : []),
             ...(note.type === "sheet" ? [{ label: "更換表格", onSelect: () => void changeTable(placed, note) }] : []),
             remove,

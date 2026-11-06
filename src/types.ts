@@ -82,6 +82,20 @@ export interface Note {
     content: string;
     updatedAt: number;
     createdAt: number;
+    /** 依名稱排序。 */
+    tags: NoteTag[];
+}
+
+/** 貼在筆記上的 Tag。 */
+export interface NoteTag {
+    id: string;
+    name: string;
+    color: string;
+}
+
+/** Tag 目錄的一筆，`count` 是用到它的筆記數。 */
+export interface TagInfo extends NoteTag {
+    count: number;
 }
 
 export interface NoteFit {
@@ -332,6 +346,8 @@ export interface SheetObject {
     id: string;
     tabId: string;
     noteId: string;
+    /** 圖表或放上來的卡片。 */
+    noteType: string;
     x: number;
     y: number;
     w: number;
@@ -384,6 +400,7 @@ export type SheetOp =
     | { op: "unmergeCells"; tableId: string; rows: string[]; cols: string[] }
     | { op: "setFilter"; tableId: string; colId: string; values: string[] | null }
     | { op: "fill"; tableId: string; sourceRows: string[]; sourceCols: string[]; targetRows: string[]; targetCols: string[]; series: boolean }
+    | { op: "placeCard"; tabId: string; target: string; x: number; y: number }
     | { op: "moveObject"; id: string; x: number; y: number; w: number; h: number }
     | { op: "removeObject"; id: string };
 
@@ -483,7 +500,7 @@ export type SlidesOp =
     | { op: "duplicateSlide"; id: string }
     | { op: "moveSlide"; id: string; before: string | null }
     | { op: "patchSlide"; id: string; background?: string; notes?: string; all?: boolean }
-    | { op: "addElement"; slideId: string; kind: string; shape?: string; target?: string; source?: CellRange }
+    | { op: "addElement"; slideId: string; kind: string; shape?: string; target?: string; source?: CellRange; x?: number; y?: number }
     | { op: "patchElement"; id: string; patch: ElementPatch }
     | { op: "moveElements"; moves: NoteMove[] }
     | { op: "deleteElements"; ids: string[] }

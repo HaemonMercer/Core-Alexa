@@ -8,6 +8,8 @@ import { deleteLabel } from "../../noteTypes.ts";
 import FullscreenButton from "./FullscreenButton.tsx";
 import NoteSummary from "./NoteSummary.tsx";
 import { useTypeFilter } from "./useTypeFilter.tsx";
+import { NoteTags } from "../tags/TagChip.tsx";
+import { useTagFilter } from "../tags/useTagFilter.tsx";
 
 // 白板右側的清單：拖到白板上放置，雙擊開啟內容。
 // 這裡不做多選：Delete、Ctrl+A 在白板頁屬於畫布。
@@ -23,19 +25,27 @@ interface CardShelfProps {
     canPlace: boolean;
     /** 已經在這個白板上的筆記，不能再放一次。Excels 除外，不同表格可以各放一張。 */
     placedNoteIDs: ReadonlySet<string>;
+    /** 這裡放得下的類型。沒有提供時全部都可以。 */
+    accepts?: (note: Note) => boolean;
+    /** 卡片放到哪裡，顯示在提示文字。 */
+    surfaceName?: string;
+    /** 拖曳中的位置，文件用來顯示會放在哪裡。 */
+    onHover?: (point: { x: number; y: number } | null) => void;
     /** 放開滑鼠的位置（螢幕座標）。拖的是 Excels 裡的表格時有 `tableID`。 */
     onDrop: (id: string, clientX: number, clientY: number, tableID?: string) => void;
     onPlaceAtCenter: (id: string, tableID?: string) => void;
     onOpen: (id: string) => void;
     onOpenFullscreen: (id: string) => void;
+    onOpenInTab: (id: string) => void;
     onDeleted: (ids: string[]) => void;
     onError: (error: unknown) => void;
 }
 
 function CardShelf({
-    notes, sheets = {}, empty, canPlace, placedNoteIDs, onDrop, onPlaceAtCenter, onOpen, onOpenFullscreen, onDeleted, onError,
+    notes, sheets = {}, empty, canPlace, placedNoteIDs, accepts, surfaceName = "白板", onHover, onDrop, onPlaceAtCenter, onOpen, onOpenFullscreen, onOpenInTab, onDeleted, onError,
 }: CardShelfProps) {
-    const { visible: cards, bar: typeFilter } = useTypeFilter(notes);
+    const { visible: typed, bar: typeFilter } = useTypeFilter(notes);
+    const { visible: cards, bar: tagFilter } = useTagFilter(typed);
     const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
     const [menu, setMenu] = useState<{ x: number; y: number; card: Note; table?: SheetTableInfo } | null>(null);
     const closeMenu = useCallback(() => setMenu(null), []);
@@ -44,7 +54,7 @@ function CardShelf({
     const pressedAt = useRef<{ x: number; y: number } | null>(null);
     const [dragging, setDragging] = useState<{ card: Note; table?: SheetTableInfo; x: number; y: number } | null>(null);
 
-    const placeable = (card: Note) => canPlace && (card.type === "sheet" || !placedNoteIDs.has(card.id));
+    const placeable = (card: Note) => canPlace && (accepts?.(card) ?? true) && (card.type === "sheet" || !placedNoteIDs.has(card.id));
 
     const onPointerDown = (evt: PointerEvent, card: Note) => {
         if (evt.button !== 0 || !placeable(card)) return;
@@ -57,6 +67,7 @@ function CardShelf({
         if (!start) return;
         if (dragging || Math.hypot(evt.clientX - start.x, evt.clientY - start.y) >= CLICK_SLOP) {
             setDragging({ card, table, x: evt.clientX, y: evt.clientY });
+            onHover?.({ x: evt.clientX, y: evt.clientY });
         }
     };
 
@@ -64,6 +75,7 @@ function CardShelf({
         pressedAt.current = null;
         if (!dragging) return;
         setDragging(null);
+        onHover?.(null);
         if (evt.type === "pointerup") onDrop(dragging.card.id, evt.clientX, evt.clientY, dragging.table?.id);
     };
 
@@ -83,7 +95,7 @@ function CardShelf({
             tabIndex={0}
             data-dragging={dragging?.card.id === card.id}
             data-placeable={placeable(card)}
-            title={canPlace && !placeable(card) ? "已在這個白板上" : undefined}
+            title={canPlace && !placeable(card) && (accepts?.(card) ?? true) ? `已在這個${surfaceName}上` : undefined}
             onPointerDown={(evt) => onPointerDown(evt, card)}
             onPointerMove={(evt) => onPointerMove(evt, card)}
             onPointerUp={onPointerEnd}
@@ -101,6 +113,7 @@ function CardShelf({
             }}
         >
             {inner ? <ChartLabel note={card} /> : <NoteSummary note={card} />}
+            {!inner && <NoteTags note={card} />}
             {!inner && <FullscreenButton onOpen={() => onOpenFullscreen(card.id)} />}
             {!inner && sheets[card.id] && (
                 <SheetToggle contents={sheets[card.id]} open={expanded.has(card.id)} onToggle={() => toggle(card.id)} />
@@ -137,10 +150,11 @@ function CardShelf({
     return (
         <>
             {typeFilter}
+            {tagFilter}
             {notes && !hasContent && <p className="library-empty right-panel-hint">{empty}</p>}
             {hasContent && (
                 <p className="library-empty right-panel-hint">
-                    {canPlace ? "把卡片拖到白板上，雙擊可以編輯內容。" : "開啟白板後才能放卡片，雙擊可以編輯內容。"}
+                    {canPlace ? `把卡片拖到${surfaceName}上，雙擊可以編輯內容。` : "開啟白板後才能放卡片，雙擊可以編輯內容。"}
                 </p>
             )}
             <ul className="card-shelf">
@@ -170,17 +184,18 @@ function CardShelf({
                     items={menu.table ? [
                         { label: "開啟 Excels", onSelect: () => onOpenFullscreen(menu.card.id) },
                         {
-                            label: "放到白板",
+                            label: `放到${surfaceName}`,
                             disabledReason: canPlace ? undefined : "Root 只能放白板",
                             onSelect: () => onPlaceAtCenter(menu.card.id, menu.table?.id),
                         },
                     ] : [
                         { label: "開啟", onSelect: () => onOpen(menu.card.id) },
+                        { label: "在新分頁開啟", onSelect: () => onOpenInTab(menu.card.id) },
                         {
-                            label: "放到白板",
+                            label: `放到${surfaceName}`,
                             disabledReason: !canPlace
                                 ? "Root 只能放白板"
-                                : placeable(menu.card) ? undefined : "已在這個白板上",
+                                : placeable(menu.card) ? undefined : `已在這個${surfaceName}上`,
                             onSelect: () => onPlaceAtCenter(menu.card.id),
                         },
                         { label: deleteLabel([menu.card]), onSelect: () => deletion.ask([menu.card]) },

@@ -7,8 +7,8 @@ const KEEP_AFTER_HEADING = 28;
 const HEADINGS = ["h1", "h2", "h3"];
 
 const textOf = (row: HTMLElement) => row.querySelector<HTMLElement>(".writer-text");
-/** 表格的列和目錄的項目都是一列一列分頁的。 */
-const tableRowsOf = (row: HTMLElement) => [...row.querySelectorAll<HTMLElement>(".writer-table-row, .writer-toc-row")];
+/** 表格的列、目錄的項目和放進來的 Note 的每個區塊都是一列一列分頁的。 */
+const tableRowsOf = (row: HTMLElement) => [...row.querySelectorAll<HTMLElement>(".writer-table-row, .writer-toc-row, .writer-card .writer-row")];
 
 function clearBreaks(list: Element) {
     for (const row of list.querySelectorAll<HTMLElement>(".writer-row")) {

@@ -7,6 +7,8 @@ import { useListSelection } from "../common/useListSelection.ts";
 import { deleteLabel } from "../../noteTypes.ts";
 import { useCardList } from "./useCardList.ts";
 import { useTypeFilter } from "./useTypeFilter.tsx";
+import { NoteTags } from "../tags/TagChip.tsx";
+import { useTagFilter } from "../tags/useTagFilter.tsx";
 
 interface CardLibraryProps {
     cardsRevision: number;
@@ -15,15 +17,17 @@ interface CardLibraryProps {
     /** 只選取一張時傳 id，右側面板才知道要開哪張；其他情況傳 null。 */
     onSelect: (id: string | null) => void;
     onOpenFullscreen: (id: string) => void;
+    onOpenInTab: (id: string) => void;
     onDeleted: (ids: string[]) => void;
     onError: (error: unknown) => void;
 }
 
 function CardLibrary({
-    cardsRevision, selectedID, syncedCard, onSelect, onOpenFullscreen, onDeleted, onError,
+    cardsRevision, selectedID, syncedCard, onSelect, onOpenFullscreen, onOpenInTab, onDeleted, onError,
 }: CardLibraryProps) {
     const notes = useCardList(cardsRevision, syncedCard, onError);
-    const { visible: cards, bar: typeFilter } = useTypeFilter(notes);
+    const { visible: typed, bar: typeFilter } = useTypeFilter(notes);
+    const { visible: cards, bar: tagFilter } = useTagFilter(typed);
     const [menu, setMenu] = useState<{ x: number; y: number; ids: string[] } | null>(null);
     const closeMenu = useCallback(() => setMenu(null), []);
 
@@ -63,6 +67,7 @@ function CardLibrary({
                 {selection.count > 1 && <span className="library-count">已選取 {selection.count} 張</span>}
             </h1>
             {typeFilter}
+            {tagFilter}
             {notes?.length === 0 && <p className="library-empty">還沒有卡片。在白板上雙擊空白處就能建立。</p>}
             <ul className="card-grid">
                 {cards?.map((card) => (
@@ -85,6 +90,7 @@ function CardLibrary({
                         }}
                     >
                         <NoteSummary note={card} />
+                        <NoteTags note={card} />
                         <FullscreenButton onOpen={() => onOpenFullscreen(card.id)} />
                     </li>
                 ))}
@@ -93,10 +99,13 @@ function CardLibrary({
                 <ContextMenu
                     x={menu.x}
                     y={menu.y}
-                    items={[{
-                        label: deleteLabel(notes?.filter((note) => menu.ids.includes(note.id)) ?? []),
-                        onSelect: () => askDelete(menu.ids),
-                    }]}
+                    items={[
+                        ...(menu.ids.length === 1 ? [{ label: "在新分頁開啟", onSelect: () => onOpenInTab(menu.ids[0]) }] : []),
+                        {
+                            label: deleteLabel(notes?.filter((note) => menu.ids.includes(note.id)) ?? []),
+                            onSelect: () => askDelete(menu.ids),
+                        },
+                    ]}
                     onClose={closeMenu}
                 />
             )}

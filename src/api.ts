@@ -17,6 +17,7 @@ import type {
     NoteFit,
     NoteLinks,
     NoteMove,
+    NoteTag,
     NoteType,
     OfficeDocuments,
     PlacedCard,
@@ -27,6 +28,7 @@ import type {
     SlidesEdit,
     SlidesOp,
     SlidesState,
+    TagInfo,
     ViewState,
     WhiteboardDeletion,
     WorkspaceState,
@@ -79,6 +81,20 @@ export const getWhiteboardDeletion = (ids: string[]) =>
 
 export const deleteWhiteboards = (ids: string[]) =>
     send<WorkspaceState>("delete_whiteboards", { ids });
+
+export const getTags = () => send<TagInfo[]>("get_tags");
+
+export const addNoteTag = (noteId: string, name: string) =>
+    send<NoteTag>("add_note_tag", { noteId, name });
+
+export const removeNoteTag = (noteId: string, tagId: string) =>
+    send<void>("remove_note_tag", { noteId, tagId });
+
+export const renameTag = (id: string, name: string) => send<void>("rename_tag", { id, name });
+
+export const setTagColor = (id: string, color: string) => send<void>("set_tag_color", { id, color });
+
+export const deleteTag = (id: string) => send<void>("delete_tag", { id });
 
 export const getNoteLinks = (id: string) => send<NoteLinks>("get_note_links", { id });
 

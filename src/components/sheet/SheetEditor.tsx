@@ -1,7 +1,10 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
 import * as api from "../../api.ts";
 import type { CellInput, CellRange, SheetObject, SheetOp, SheetState, SheetTable, StylePatch } from "../../types.ts";
+import { useCardSurface, type CardSurface } from "../cards/cardSurface.ts";
+import PlacedCard from "../cards/PlacedCard.tsx";
 import ChartView from "../chart/ChartView.tsx";
+import EmbeddedNote from "../writer/EmbeddedNote.tsx";
 import { CHART_KINDS, type ChartKind } from "../chart/layout.ts";
 import ConfirmDialog from "../common/ConfirmDialog.tsx";
 import ContextMenu, { type MenuItem } from "../common/ContextMenu.tsx";
@@ -31,6 +34,16 @@ const FORMATS: { id: string; label: string }[] = [
 
 interface SheetEditorProps {
     noteID: string;
+    /** 放在頁面上的卡片要跟著更新。 */
+    cardRevision: number;
+    /** 工作表像白板一樣可以放卡片。 */
+    onSurface: (surface: CardSurface | null) => void;
+    /** 雙擊頁面上的卡片。Note 就地編輯，其他類型開啟右側面板。 */
+    onPeekCard: (id: string) => void;
+    /** 就地編輯的 Note 改了內容。 */
+    onCardChanged: (id: string) => void;
+    onCardCreated: () => void;
+    onOpenLink: (href: string) => void;
     onChanged: () => void;
     onOpenChart: (id: string) => void;
     onError: (error: unknown) => void;
@@ -115,12 +128,15 @@ function NameInput({ value, onSubmit, onCancel, className }: { value: string; on
 }
 
 /** 參考 Numbers：頁面上放表格，選到表格才出現欄名、列號與控制點。 */
-function SheetEditor({ noteID, onChanged, onOpenChart, onError }: SheetEditorProps) {
+function SheetEditor({ noteID, cardRevision, onSurface, onPeekCard, onCardChanged, onCardCreated, onOpenLink, onChanged, onOpenChart, onError }: SheetEditorProps) {
     const [state, setState] = useState<SheetState | null>(null);
     const [tabID, setTabID] = useState<string | null>(null);
     const [selection, setSelection] = useState<Selection | null>(null);
     const [editing, setEditing] = useState<Editing | null>(null);
     const [objectID, setObjectID] = useState<string | null>(null);
+    const [noteEditID, setNoteEditID] = useState<string | null>(null);
+    const stopNoteEdit = useCallback(() => setNoteEditID(null), []);
+    const pageRef = useRef<HTMLDivElement>(null);
     const [menu, setMenu] = useState<Menu | null>(null);
     const [renaming, setRenaming] = useState<{ kind: "tab" | "table"; id: string } | null>(null);
     const [confirm, setConfirm] = useState<{ title: string; detail: string; run: () => void } | null>(null);
@@ -666,6 +682,32 @@ function SheetEditor({ noteID, onChanged, onOpenChart, onError }: SheetEditorPro
         window.addEventListener("pointerup", onUp);
     };
 
+    const placedCards = useMemo(
+        () => new Set(objects.filter((item) => item.noteType !== "chart").map((item) => item.noteId)),
+        [objects],
+    );
+
+    /** `x`、`y` 是頁面上的座標。放好就選取，和白板一樣。 */
+    const placeCard = (target: string, x: number, y: number) => {
+        if (!tabID) return;
+        void apply({ op: "placeCard", tabId: tabID, target, x, y }).then((next) => {
+            const placed = next?.objects.find((item) => item.tabId === tabID && item.noteId === target);
+            if (placed) setObjectID(placed.id);
+        });
+    };
+
+    useCardSurface(onSurface, "工作表", placedCards, {
+        placeAt: (target, clientX, clientY) => {
+            const scroller = document.elementFromPoint(clientX, clientY)?.closest(".sheet-page");
+            const canvas = scroller?.querySelector(".sheet-canvas")?.getBoundingClientRect();
+            if (canvas) placeCard(target, clientX - canvas.left, clientY - canvas.top);
+        },
+        placeAtCenter: (target) => {
+            const scroller = pageRef.current;
+            if (scroller) placeCard(target, scroller.scrollLeft + scroller.clientWidth / 2, scroller.scrollTop + scroller.clientHeight / 2);
+        },
+    });
+
     if (!state) return <div className="sheet-editor" />;
 
     const merged = box !== null && table !== null && boxHasMerge(box, table.merges);
@@ -823,6 +865,7 @@ function SheetEditor({ noteID, onChanged, onOpenChart, onError }: SheetEditorPro
                 />
             </div>
             <div
+                ref={pageRef}
                 className="sheet-page"
                 onPointerDown={(evt) => {
                     if (evt.target !== evt.currentTarget && !(evt.target as Element).classList.contains("sheet-canvas")) return;
@@ -1053,14 +1096,20 @@ function SheetEditor({ noteID, onChanged, onOpenChart, onError }: SheetEditorPro
                                 className="sheet-object"
                                 data-selected={item.id === objectID}
                                 style={{ left: moved?.x ?? item.x, top: moved?.y ?? item.y, width: moved?.w ?? item.w, height: moved?.h ?? item.h }}
+                                data-editing={item.id === noteEditID}
                                 onPointerDown={(evt) => {
-                                    if (evt.button !== 0) return;
+                                    // Note 正在編輯時，按下去是選字，不是搬移。
+                                    if (evt.button !== 0 || item.id === noteEditID) return;
                                     commit();
                                     setSelection(null);
                                     setObjectID(item.id);
                                     dragItem(evt, item, (x, y) => void apply({ op: "moveObject", id: item.id, x, y, w: item.w, h: item.h }));
                                 }}
-                                onDoubleClick={() => onOpenChart(item.noteId)}
+                                onDoubleClick={() => {
+                                    if (item.noteType === "chart") onOpenChart(item.noteId);
+                                    else if (item.noteType === "card") setNoteEditID(item.id);
+                                    else onPeekCard(item.noteId);
+                                }}
                                 onContextMenu={(evt) => {
                                     evt.preventDefault();
                                     setObjectID(item.id);
@@ -1068,13 +1117,36 @@ function SheetEditor({ noteID, onChanged, onOpenChart, onError }: SheetEditorPro
                                         x: evt.clientX,
                                         y: evt.clientY,
                                         items: [
-                                            { label: "開啟圖表", onSelect: () => onOpenChart(item.noteId) },
+                                            item.noteType === "chart"
+                                                ? { label: "開啟圖表", onSelect: () => onOpenChart(item.noteId) }
+                                                : item.noteType === "card"
+                                                    ? { label: "編輯卡片", onSelect: () => setNoteEditID(item.id) }
+                                                    : { label: "開啟卡片", onSelect: () => onPeekCard(item.noteId) },
                                             { label: "從頁面移除", onSelect: () => void apply({ op: "removeObject", id: item.id }) },
                                         ],
                                     });
                                 }}
                             >
-                                <ChartView noteID={item.noteId} revision={revision} onError={onError} />
+                                {item.noteType === "chart"
+                                    ? <ChartView noteID={item.noteId} revision={revision} onError={onError} />
+                                    : (
+                                        <PlacedCard
+                                            noteID={item.noteId}
+                                            revision={cardRevision}
+                                            renderNote={item.id === noteEditID ? (id) => (
+                                                <EmbeddedNote
+                                                    noteID={id}
+                                                    revision={cardRevision}
+                                                    onChanged={onCardChanged}
+                                                    onOpenLink={onOpenLink}
+                                                    onCardCreated={onCardCreated}
+                                                    onClose={stopNoteEdit}
+                                                    onError={onError}
+                                                />
+                                            ) : undefined}
+                                            onError={onError}
+                                        />
+                                    )}
                                 {item.id === objectID && <span className="sheet-object-resize" onPointerDown={(evt) => resizeObject(evt, item)} />}
                             </div>
                         );
@@ -1082,7 +1154,7 @@ function SheetEditor({ noteID, onChanged, onOpenChart, onError }: SheetEditorPro
                     {tables.length === 0 && objects.length === 0 && <p className="library-empty sheet-empty">這個工作表是空的。按「新增表格」開始。</p>}
                 </div>
             </div>
-            {object && (
+            {object?.noteType === "chart" && (
                 <p className="sheet-object-hint">雙擊圖表可以更換種類。圖表會跟著選取的格子更新。</p>
             )}
             {menu && <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} />}

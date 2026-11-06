@@ -18,8 +18,12 @@ const PASTE_OFFSET: f64 = 24.0;
 const DEFAULT_BACKGROUND: &str = "#ffffff";
 const INK: &str = "#1f2328";
 
+/// 放到投影片上的卡片，內容仍在原本的筆記。
+const CARD: &str = "card";
+const CARD_SIZE: (f64, f64) = (520.0, 360.0);
+
 fn valid_element_kind(kind: &str) -> bool {
-    matches!(kind, "text" | "shape" | "image" | "cells" | "chart")
+    matches!(kind, "text" | "shape" | "image" | "cells" | "chart" | CARD)
 }
 
 fn valid_shape(shape: &str) -> bool {
@@ -218,6 +222,12 @@ fn new_element(slide_id: &str, kind: &str, shape: Option<&str>) -> SlideElement 
             element.y = 140.0;
             element.w = 680.0;
             element.h = 460.0;
+        }
+        CARD => {
+            element.x = (STAGE_WIDTH - CARD_SIZE.0) / 2.0;
+            element.y = (STAGE_HEIGHT - CARD_SIZE.1) / 2.0;
+            element.w = CARD_SIZE.0;
+            element.h = CARD_SIZE.1;
         }
         "cells" => {
             element.x = 200.0;
@@ -468,7 +478,7 @@ impl Alexa {
                 })?;
                 Ok(None)
             }
-            SlidesOp::AddElement { slide_id, kind, shape, target, source } => {
+            SlidesOp::AddElement { slide_id, kind, shape, target, source, x, y } => {
                 slide_index(&slide_id)?;
                 if !valid_element_kind(&kind) {
                     return Err(format!("unknown element kind: {kind}"));
@@ -476,7 +486,22 @@ impl Alexa {
                 if shape.as_deref().is_some_and(|shape| !valid_shape(shape)) {
                     return Err("unknown shape".to_string());
                 }
+                if kind == CARD {
+                    self.check_placeable(target.as_deref())?;
+                    // 和白板一樣，同一張卡片在一張投影片上只放一次。
+                    let same = elements.iter().find(|item| {
+                        item.element.slide_id == slide_id && item.element.kind == CARD && item.element.note_id == target
+                    });
+                    if let Some(item) = same {
+                        return Ok(Some(item.element.id.clone()));
+                    }
+                }
                 let mut element = new_element(&slide_id, &kind, shape.as_deref());
+                // `x`、`y` 是放開的位置，物件以它為中心，不會超出畫面。
+                if let (Some(x), Some(y)) = (x, y) {
+                    element.x = (x - element.w / 2.0).clamp(0.0, STAGE_WIDTH - element.w);
+                    element.y = (y - element.h / 2.0).clamp(0.0, STAGE_HEIGHT - element.h);
+                }
                 element.note_id = target;
                 element.source = source;
                 let key = top_key(&slide_id)?;
@@ -516,7 +541,7 @@ impl Alexa {
             SlidesOp::DuplicateElements { ids } => {
                 let mut z: HashMap<String, Option<String>> = HashMap::new();
                 let mut copies = Vec::new();
-                for item in elements.iter().filter(|item| ids.contains(&item.element.id)) {
+                for item in elements.iter().filter(|item| ids.contains(&item.element.id) && item.element.kind != CARD) {
                     let slide = item.element.slide_id.clone();
                     let top = match z.get(&slide) {
                         Some(top) => top.clone(),

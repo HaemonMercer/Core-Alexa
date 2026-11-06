@@ -23,6 +23,8 @@ impl Alexa {
         let meta = doc.get_or_insert_map("meta");
         let context = doc.get_or_insert_map("context");
         let content = doc.get_or_insert_text("content");
+        // 要在開交易之前：取得根類型需要寫入鎖，交易開著時會卡死。
+        let tags = self.tags_of(doc);
         let txn = doc.transact();
         Some(Note {
             id: id.to_string(),
@@ -31,6 +33,7 @@ impl Alexa {
             content: content.get_string(&txn),
             updated_at: out_number(meta.get(&txn, "updatedAt")),
             created_at: out_number(meta.get(&txn, "createdAt")),
+            tags,
         })
     }
 
@@ -79,7 +82,7 @@ impl Alexa {
 
     /// 內容裡可能引入別的筆記的類型。
     pub(super) fn office_library(&mut self) -> Result<Vec<Note>, String> {
-        self.library(|kind| matches!(kind, "writer" | "slides" | "chart"))
+        self.library(|kind| matches!(kind, "writer" | "sheet" | "slides" | "chart"))
     }
 
     /// Office Library 的內容。
@@ -133,7 +136,7 @@ impl Alexa {
     }
 
     /// 白板方塊不在筆記目錄裡，不算筆記。
-    fn in_library(&self, id: &str) -> bool {
+    pub(super) fn in_library(&self, id: &str) -> bool {
         let directory = self.workspace.doc.get_or_insert_map("notes");
         let txn = self.workspace.doc.transact();
         directory.get(&txn, id).is_some()

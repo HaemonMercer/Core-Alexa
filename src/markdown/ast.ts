@@ -9,8 +9,6 @@ export interface Marks {
     href?: string;
 }
 
-export type MarkName = "bold" | "italic" | "strike" | "code";
-
 /** `text` 裡的 "\n" 代表換行。 */
 export interface Run extends Marks {
     text: string;
@@ -67,9 +65,7 @@ export interface ImageBlock {
     percent: number | null;
 }
 
-/** 文件中可以放游標（或分隔線）的最小區塊。 */
-export type LeafBlock = ParagraphBlock | HeadingBlock | CodeBlock | RuleBlock;
-export type Block = LeafBlock | QuoteBlock | ListBlock | TableBlock | ImageBlock;
+export type Block = ParagraphBlock | HeadingBlock | CodeBlock | RuleBlock | QuoteBlock | ListBlock | TableBlock | ImageBlock;
 
 export const paragraph = (runs: Run[] = []): ParagraphBlock => ({ type: "paragraph", runs });
 
@@ -104,27 +100,3 @@ export function normalizeRuns(runs: Run[]): Run[] {
 }
 
 export const runsText = (runs: Run[]): string => runs.map((run) => run.text).join("");
-
-export const runsLength = (runs: Run[]): number =>
-    runs.reduce((total, run) => total + run.text.length, 0);
-
-export function sliceRuns(runs: Run[], from: number, to = Infinity): Run[] {
-    const sliced: Run[] = [];
-    let position = 0;
-    for (const run of runs) {
-        const end = position + run.text.length;
-        const text = run.text.slice(Math.max(from - position, 0), Math.max(to - position, 0));
-        if (text) sliced.push({ ...run, text });
-        position = end;
-    }
-    return sliced;
-}
-
-/** 只改寫 [from, to) 範圍內片段的格式。 */
-export function mapRuns(runs: Run[], from: number, to: number, update: (run: Run) => Run): Run[] {
-    return normalizeRuns([
-        ...sliceRuns(runs, 0, from),
-        ...sliceRuns(runs, from, to).map(update),
-        ...sliceRuns(runs, to),
-    ]);
-}

@@ -1,12 +1,16 @@
 import PanelResizer from "./PanelResizer.tsx";
 
-export type Page = "whiteboard" | "cards" | "whiteboards" | "office";
+export type Page = "whiteboard" | "cards" | "whiteboards" | "office" | "tags";
 
 const ITEMS: { page: Page; label: string }[] = [
     { page: "cards", label: "Card Library" },
     { page: "office", label: "Office Library" },
     { page: "whiteboards", label: "Whiteboard Library" },
+    { page: "tags", label: "Tag Library" },
 ];
+
+/** 分頁標題用的頁面名稱。 */
+export const pageLabel = (page: Page) => ITEMS.find((item) => item.page === page)?.label ?? "";
 
 interface LeftPanelProps {
     page: Page;

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
 import * as api from "../../api.ts";
 import type { CellRange, ElementPatch, Note, SlideElement, SlidesOp, SlidesState } from "../../types.ts";
+import { useCardSurface, type CardSurface } from "../cards/cardSurface.ts";
 import ContextMenu, { type MenuItem } from "../common/ContextMenu.tsx";
 import DocumentTitle from "../office/DocumentTitle.tsx";
 import NotePicker from "../office/NotePicker.tsx";
@@ -10,6 +11,7 @@ import { SHAPES } from "./shapes.ts";
 import SlideCanvas, { textStyle } from "./SlideCanvas.tsx";
 import SlideShow from "./SlideShow.tsx";
 import { fitScale, HANDLES, resizeRect, snapToCenter, STAGE_WIDTH, type Handle, type Rect } from "./stage.ts";
+import EmbeddedNote from "../writer/EmbeddedNote.tsx";
 
 const THUMB_WIDTH = 160;
 const THUMB_SCALE = THUMB_WIDTH / STAGE_WIDTH;
@@ -28,6 +30,16 @@ const PALETTE = ["#1f2328", "#57606a", "#ffffff", "#4f5bd5", "#2a78d6", "#1baf7a
 
 interface SlidesEditorProps {
     noteID: string;
+    /** 放在投影片上的卡片要跟著更新。 */
+    cardRevision: number;
+    /** 投影片像白板一樣可以放卡片。 */
+    onSurface: (surface: CardSurface | null) => void;
+    /** 雙擊投影片上的卡片。Note 就地編輯，其他類型開啟右側面板。 */
+    onPeekCard: (id: string) => void;
+    /** 就地編輯的 Note 改了內容。 */
+    onCardChanged: (id: string) => void;
+    onCardCreated: () => void;
+    onOpenLink: (href: string) => void;
     onChanged: () => void;
     onError: (error: unknown) => void;
 }
@@ -47,11 +59,16 @@ function Swatches({ allowNone, onPick }: { allowNone?: boolean; onPick: (color: 
 }
 
 /** 左邊縮圖、中間畫面、下面講者備忘稿。物件的位置在拖曳時只改畫面，放開才寫回 Rust。 */
-function SlidesEditor({ noteID, onChanged, onError }: SlidesEditorProps) {
+function SlidesEditor({ noteID, cardRevision, onSurface, onPeekCard, onCardChanged, onCardCreated, onOpenLink, onChanged, onError }: SlidesEditorProps) {
     const [state, setState] = useState<SlidesState | null>(null);
     const [slideID, setSlideID] = useState<string | null>(null);
     const [selected, setSelected] = useState<string[]>([]);
     const [editingID, setEditingID] = useState<string | null>(null);
+    const [noteEditID, setNoteEditID] = useState<string | null>(null);
+    const stopNoteEdit = useCallback(() => {
+        setNoteEditID(null);
+        stageFocus.current?.focus();
+    }, []);
     const [draft, setDraft] = useState("");
     const [popover, setPopover] = useState<Popover>(null);
     const [embed, setEmbed] = useState<Embed>(null);
@@ -144,6 +161,15 @@ function SlidesEditor({ noteID, onChanged, onError }: SlidesEditorProps) {
     }, [editingID, draft, apply]);
 
     const startText = (element: SlideElement) => {
+        if (element.kind === "card" && element.noteId) {
+            const noteID = element.noteId;
+            api.getNote(noteID)
+                .then((note) => {
+                    if (note?.type === "card") setNoteEditID(element.id);
+                    else onPeekCard(noteID);
+                })
+                .catch(onError);
+        }
         if (element.kind !== "text" && element.kind !== "shape") return;
         setSelected([element.id]);
         setDraft(element.text);
@@ -157,7 +183,7 @@ function SlidesEditor({ noteID, onChanged, onError }: SlidesEditorProps) {
         });
     };
 
-    const addElement = (kind: string, extra: { shape?: string; target?: string; source?: CellRange } = {}) => {
+    const addElement = (kind: string, extra: { shape?: string; target?: string; source?: CellRange; x?: number; y?: number } = {}) => {
         if (!slideID) return;
         setPopover(null);
         setEmbed(null);
@@ -174,6 +200,20 @@ function SlidesEditor({ noteID, onChanged, onError }: SlidesEditorProps) {
         });
     };
 
+    const placedCards = useMemo(
+        () => new Set(slide?.elements.flatMap((element) => (element.kind === "card" && element.noteId ? [element.noteId] : [])) ?? []),
+        [slide],
+    );
+
+    useCardSurface(onSurface, "投影片", placedCards, {
+        placeAt: (target, clientX, clientY) => {
+            const frame = stage.current?.querySelector(".slide-frame")?.getBoundingClientRect();
+            if (!frame || clientX < frame.left || clientX > frame.right || clientY < frame.top || clientY > frame.bottom) return;
+            addElement("card", { target, x: (clientX - frame.left) / scale, y: (clientY - frame.top) / scale });
+        },
+        placeAtCenter: (target) => addElement("card", { target }),
+    });
+
     const deletePicked = () => {
         const ids = picked.map((element) => element.id);
         setSelected([]);
@@ -185,7 +225,7 @@ function SlidesEditor({ noteID, onChanged, onError }: SlidesEditorProps) {
     };
 
     const onStageKey = (evt: KeyboardEvent) => {
-        if (editingID || (evt.target as HTMLElement).closest("input, textarea, select")) return;
+        if (editingID || (evt.target as HTMLElement).closest("input, textarea, select, .writer-editor")) return;
         if (history(evt)) return;
         if (picked.length === 0) {
             if (evt.key === "ArrowDown" || evt.key === "PageDown") {
@@ -221,6 +261,11 @@ function SlidesEditor({ noteID, onChanged, onError }: SlidesEditorProps) {
     };
 
     const dragElements = (evt: ReactPointerEvent, element: SlideElement) => {
+        // Note 正在編輯時，按下去是選字，不是搬移。
+        if (noteEditID === element.id) {
+            evt.stopPropagation();
+            return;
+        }
         if (evt.button !== 0 || editingID === element.id) return;
         evt.stopPropagation();
         evt.preventDefault();
@@ -280,7 +325,7 @@ function SlidesEditor({ noteID, onChanged, onError }: SlidesEditorProps) {
             items: [
                 { label: "移到最上層", onSelect: () => void apply({ op: "orderElement", id: element.id, front: true }) },
                 { label: "移到最下層", onSelect: () => void apply({ op: "orderElement", id: element.id, front: false }) },
-                { label: "複製", onSelect: () => void apply({ op: "duplicateElements", ids: [element.id] }) },
+                ...(element.kind === "card" ? [] : [{ label: "複製", onSelect: () => void apply({ op: "duplicateElements", ids: [element.id] }) }]),
                 { label: "刪除", onSelect: () => void apply({ op: "deleteElements", ids: [element.id] }) },
             ],
         });
@@ -436,7 +481,7 @@ function SlidesEditor({ noteID, onChanged, onError }: SlidesEditorProps) {
                                 }}
                             >
                                 <span className="slides-thumb-number">{index + 1}</span>
-                                <SlideCanvas slide={item} scale={THUMB_SCALE} images={images} onError={onError} />
+                                <SlideCanvas slide={item} scale={THUMB_SCALE} images={images} cardRevision={cardRevision} onError={onError} />
                             </div>
                         </div>
                     ))}
@@ -463,6 +508,21 @@ function SlidesEditor({ noteID, onChanged, onError }: SlidesEditorProps) {
                             images={images}
                             showPlaceholders
                             editingID={editingID}
+                            cardRevision={cardRevision}
+                            editingNote={noteEditID ? {
+                                elementID: noteEditID,
+                                render: (id) => (
+                                    <EmbeddedNote
+                                        noteID={id}
+                                        revision={cardRevision}
+                                        onChanged={onCardChanged}
+                                        onOpenLink={onOpenLink}
+                                        onCardCreated={onCardCreated}
+                                        onClose={stopNoteEdit}
+                                        onError={onError}
+                                    />
+                                ),
+                            } : null}
                             onError={onError}
                             elementProps={(element) => ({
                                 "data-selected": selected.includes(element.id),
@@ -479,7 +539,7 @@ function SlidesEditor({ noteID, onChanged, onError }: SlidesEditorProps) {
                                 <>
                                     {shown.elements.filter((element) => selected.includes(element.id)).map((element) => (
                                         <div key={element.id} className="slide-selection" style={{ left: element.x, top: element.y, width: element.w, height: element.h, outlineWidth: 2 / scale }}>
-                                            {selected.length === 1 && editingID !== element.id && HANDLES.map((handle) => (
+                                            {selected.length === 1 && editingID !== element.id && noteEditID !== element.id && HANDLES.map((handle) => (
                                                 <span
                                                     key={handle}
                                                     className="slide-handle"

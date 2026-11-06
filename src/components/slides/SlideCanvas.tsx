@@ -1,6 +1,7 @@
 import type { CSSProperties, ReactNode } from "react";
 import { imageInfo, mediaUrl } from "../../media.ts";
 import type { Note, Slide, SlideElement } from "../../types.ts";
+import PlacedCard from "../cards/PlacedCard.tsx";
 import ChartView from "../chart/ChartView.tsx";
 import CellsView from "../office/CellsView.tsx";
 import { shapePath } from "./shapes.ts";
@@ -14,6 +15,10 @@ interface SlideCanvasProps {
     showPlaceholders?: boolean;
     /** 這個物件正在編輯文字，內容由編輯框顯示。 */
     editingID?: string | null;
+    /** 放在投影片上的卡片要跟著更新。 */
+    cardRevision?: number;
+    /** 這個物件的 Note 正在投影片上編輯。 */
+    editingNote?: { elementID: string; render: (noteID: string) => ReactNode } | null;
     onError: (error: unknown) => void;
     /** 放在每個物件上，編輯器用來接收拖曳。 */
     elementProps?: (element: SlideElement) => Record<string, unknown>;
@@ -48,11 +53,13 @@ function TextContent({ element, showPlaceholders, hidden }: { element: SlideElem
     );
 }
 
-function ElementBody({ element, images, showPlaceholders, editing, onError }: {
+function ElementBody({ element, images, showPlaceholders, editing, cardRevision, renderNote, onError }: {
     element: SlideElement;
     images: Map<string, Note>;
     showPlaceholders: boolean;
     editing: boolean;
+    cardRevision?: number;
+    renderNote?: (noteID: string) => ReactNode;
     onError: (error: unknown) => void;
 }) {
     const { w, h } = element;
@@ -80,6 +87,8 @@ function ElementBody({ element, images, showPlaceholders, editing, onError }: {
         }
         case "chart":
             return element.noteId ? <ChartView noteID={element.noteId} onError={onError} /> : null;
+        case "card":
+            return element.noteId ? <PlacedCard noteID={element.noteId} revision={cardRevision} renderNote={renderNote} onError={onError} /> : null;
         case "cells":
             return element.source ? <CellsView source={element.source} fontSize={element.fontSize} onError={onError} /> : null;
         default:
@@ -88,7 +97,7 @@ function ElementBody({ element, images, showPlaceholders, editing, onError }: {
 }
 
 /** 一張投影片。編輯器、縮圖與放映都用它，畫面才會完全一樣。 */
-function SlideCanvas({ slide, scale, images, showPlaceholders = false, editingID, onError, elementProps, overlay }: SlideCanvasProps) {
+function SlideCanvas({ slide, scale, images, showPlaceholders = false, editingID, cardRevision, editingNote, onError, elementProps, overlay }: SlideCanvasProps) {
     return (
         <div className="slide-frame" style={{ width: STAGE_WIDTH * scale, height: STAGE_HEIGHT * scale }}>
             <div
@@ -114,6 +123,8 @@ function SlideCanvas({ slide, scale, images, showPlaceholders = false, editingID
                             images={images}
                             showPlaceholders={showPlaceholders}
                             editing={editingID === element.id}
+                            cardRevision={cardRevision}
+                            renderNote={editingNote?.elementID === element.id ? editingNote.render : undefined}
                             onError={onError}
                         />
                     </div>

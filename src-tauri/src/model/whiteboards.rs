@@ -29,6 +29,7 @@ pub(super) fn whiteboard_tile(board: &Whiteboard) -> Note {
         content: board.name.clone(),
         updated_at: board.created_at,
         created_at: board.created_at,
+        tags: Vec::new(),
     }
 }
 

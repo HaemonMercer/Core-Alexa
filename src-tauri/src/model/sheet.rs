@@ -19,6 +19,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use yrs::{Map, MapPrelim, MapRef, Out, ReadTxn, Transact, TransactionMut};
 
+const CARD_SIZE: (f64, f64) = (320.0, 220.0);
 const ROOTS: [&str; 6] = ["tabs", "tables", "rows", "cols", "cells", "objects"];
 const DEFAULT_ROWS: usize = 8;
 const DEFAULT_COLS: usize = 5;
@@ -179,6 +180,7 @@ fn read_data<T: ReadTxn>(txn: &T, roots: &[MapRef; 6]) -> SheetData {
                 id: id.to_string(),
                 tab_id: field_string(&item, txn, "tabId")?,
                 note_id: field_string(&item, txn, "noteId")?,
+                note_type: String::new(),
                 x: field_number(&item, txn, "x"),
                 y: field_number(&item, txn, "y"),
                 w: field_number(&item, txn, "w"),
@@ -647,7 +649,13 @@ impl Alexa {
         let mut state = render(&self.sheet_data(note_id)?);
         // 圖表被刪除後，頁面上的位置就沒有意義了。
         let mut objects = std::mem::take(&mut state.objects);
-        objects.retain(|object| self.note_type(&object.note_id).is_some());
+        objects.retain_mut(|object| match self.note_type(&object.note_id) {
+            Some(kind) => {
+                object.note_type = kind;
+                true
+            }
+            None => false,
+        });
         state.objects = objects;
         Ok(state)
     }
@@ -879,6 +887,26 @@ impl Alexa {
             }
             SheetOp::Fill { table_id, source_rows, source_cols, target_rows, target_cols, series } => {
                 self.fill(note_id, data, &table_id, FillArea { source_rows, source_cols, target_rows, target_cols }, series)
+            }
+            SheetOp::PlaceCard { tab_id, target, x, y } => {
+                if !data.tabs.iter().any(|tab| tab.0 == tab_id) {
+                    return Err(format!("unknown tab: {tab_id}"));
+                }
+                self.check_placeable(Some(&target))?;
+                // 和白板一樣，同一張卡片在一個分頁上只放一次。
+                if data.objects.iter().any(|object| object.tab_id == tab_id && object.note_id == target) {
+                    return Ok(());
+                }
+                self.office_edit(note_id, NoteType::Sheet, ROOTS, |txn, roots| {
+                    let item = roots[5].insert(txn, new_id().as_str(), MapPrelim::default());
+                    item.insert(txn, "tabId", tab_id.clone());
+                    item.insert(txn, "noteId", target.clone());
+                    item.insert(txn, "x", (x - CARD_SIZE.0 / 2.0).max(0.0));
+                    item.insert(txn, "y", (y - CARD_SIZE.1 / 2.0).max(0.0));
+                    item.insert(txn, "w", CARD_SIZE.0);
+                    item.insert(txn, "h", CARD_SIZE.1);
+                    Ok(())
+                })
             }
             SheetOp::MoveObject { id, x, y, w, h } => self.office_edit(note_id, NoteType::Sheet, ROOTS, |txn, roots| {
                 let item = item_of(&roots[5], txn, &id, "object")?;

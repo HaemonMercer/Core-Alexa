@@ -73,16 +73,19 @@ fn put_band(page: &MapRef, txn: &mut TransactionMut, prefix: &str, band: &Writer
     }
 }
 
+/// 放進文件的卡片，內容仍在原本的筆記。
+const CARD: &str = "card";
+
 fn valid_kind(kind: &str) -> bool {
     matches!(
         kind,
         "paragraph" | "h1" | "h2" | "h3" | "bullet" | "number" | "todo" | "toggle" | "quote" | "callout"
-            | "code" | "divider" | "cells" | "chart" | "image" | "table" | "pagebreak" | "toc"
+            | "code" | "divider" | "cells" | "chart" | "image" | "table" | "pagebreak" | "toc" | CARD
     )
 }
 
 fn has_text(kind: &str) -> bool {
-    !matches!(kind, "divider" | "cells" | "chart" | "image" | "table" | "pagebreak" | "toc")
+    !matches!(kind, "divider" | "cells" | "chart" | "image" | "table" | "pagebreak" | "toc" | CARD)
 }
 
 /// 每一列補到一樣寬。太大的表格拒絕，不要默默截掉內容。
@@ -465,6 +468,14 @@ impl Alexa {
                 if !valid_kind(&kind) {
                     return Err(format!("unknown block kind: {kind}"));
                 }
+                if kind == CARD {
+                    self.check_type(note_id, NoteType::Writer)?;
+                    self.check_placeable(target.as_deref())?;
+                    // 和白板一樣，同一張卡片在一份文件裡只放一次。
+                    if let Some(item) = raw.iter().find(|item| item.block.kind == CARD && item.block.note_id == target) {
+                        return Ok(focus_on(&item.block.id));
+                    }
+                }
                 let index = after.as_deref().map(|id| position(raw, id)).transpose()?;
                 let key = key_after_index(raw, index)?;
                 let id = new_id();
@@ -568,6 +579,9 @@ impl Alexa {
             WriterOp::Duplicate { id } => {
                 let index = position(raw, &id)?;
                 let source = &raw[index].block;
+                if source.kind == CARD {
+                    return Ok(focus_on(&source.id));
+                }
                 let key = key_after_index(raw, Some(index))?;
                 let copy = new_id();
                 self.office_edit(note_id, NoteType::Writer, BLOCKS, |txn, [blocks]| {

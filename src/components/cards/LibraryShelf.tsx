@@ -1,3 +1,4 @@
+import type { Note } from "../../types.ts";
 import { useOfficeDocuments } from "../office/useOfficeDocuments.ts";
 import CardShelf from "./CardShelf.tsx";
 import { useCardList } from "./useCardList.ts";
@@ -16,27 +17,35 @@ interface LibraryShelfProps {
     syncedCard: { id: string; content: string } | null;
     canPlace: boolean;
     placedNoteIDs: ReadonlySet<string>;
+    accepts?: (note: Note) => boolean;
+    /** Slides 和 Excels 只放卡片，沒有 Office Library 分頁。 */
+    cardsOnly?: boolean;
+    surfaceName?: string;
+    onHover?: (point: { x: number; y: number } | null) => void;
     onDrop: (id: string, clientX: number, clientY: number, tableID?: string) => void;
     onPlaceAtCenter: (id: string, tableID?: string) => void;
     onOpen: (id: string) => void;
     onOpenFullscreen: (id: string) => void;
+    onOpenInTab: (id: string) => void;
     onDeleted: (ids: string[]) => void;
     onError: (error: unknown) => void;
 }
 
-/** 白板右側面板。Office 內容不在 Card Library，要放上白板時從這裡的分頁拖。 */
-function LibraryShelf({ tab, onTabChange, cardsRevision, syncedCard, ...shelf }: LibraryShelfProps) {
+/** 白板與文件的右側面板。Office 內容不在 Card Library，要放上白板時從這裡的分頁拖。 */
+function LibraryShelf({ tab, onTabChange, cardsRevision, syncedCard, cardsOnly = false, ...shelf }: LibraryShelfProps) {
     const cards = useCardList(cardsRevision, syncedCard, shelf.onError);
     const documents = useOfficeDocuments(cardsRevision, shelf.onError);
 
     return (
         <>
-            <div className="shelf-tabs" role="tablist">
-                {TABS.map(({ id, label }) => (
-                    <button key={id} role="tab" aria-selected={tab === id} onClick={() => onTabChange(id)}>{label}</button>
-                ))}
-            </div>
-            {tab === "cards" ? (
+            {!cardsOnly && (
+                <div className="shelf-tabs" role="tablist">
+                    {TABS.map(({ id, label }) => (
+                        <button key={id} role="tab" aria-selected={tab === id} onClick={() => onTabChange(id)}>{label}</button>
+                    ))}
+                </div>
+            )}
+            {cardsOnly || tab === "cards" ? (
                 <CardShelf key="cards" notes={cards} empty="還沒有卡片。在白板上雙擊空白處就能建立。" {...shelf} />
             ) : (
                 <CardShelf

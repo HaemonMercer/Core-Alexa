@@ -5,6 +5,8 @@ import type { Note, NoteType, SheetContents } from "../../types.ts";
 import FullscreenButton from "../cards/FullscreenButton.tsx";
 import NoteSummary from "../cards/NoteSummary.tsx";
 import { useTypeFilter } from "../cards/useTypeFilter.tsx";
+import { NoteTags } from "../tags/TagChip.tsx";
+import { useTagFilter } from "../tags/useTagFilter.tsx";
 import ContextMenu, { type MenuItem } from "../common/ContextMenu.tsx";
 import { useNoteDeletion } from "../common/useDeletion.tsx";
 import { useListSelection } from "../common/useListSelection.ts";
@@ -24,6 +26,7 @@ interface OfficeLibraryProps {
     selectedID: string | null;
     onSelect: (id: string | null) => void;
     onOpen: (id: string) => void;
+    onOpenInTab: (id: string) => void;
     /** 內容改變，要重新讀取。 */
     onChanged: () => void;
     onDeleted: (ids: string[]) => void;
@@ -31,11 +34,12 @@ interface OfficeLibraryProps {
 }
 
 /** 和 Card Library 同樣的操作，只列 Office 類型。圖表自動收在來源 Excels 裡，展開就看得到。 */
-function OfficeLibrary({ cardsRevision, selectedID, onSelect, onOpen, onChanged, onDeleted, onError }: OfficeLibraryProps) {
+function OfficeLibrary({ cardsRevision, selectedID, onSelect, onOpen, onOpenInTab, onChanged, onDeleted, onError }: OfficeLibraryProps) {
     const documents = useOfficeDocuments(cardsRevision, onError);
     const notes = documents?.notes ?? null;
     const sheets = documents?.sheets ?? {};
-    const { visible, bar: typeFilter } = useTypeFilter(notes);
+    const { visible: typed, bar: typeFilter } = useTypeFilter(notes);
+    const { visible, bar: tagFilter } = useTagFilter(typed);
     const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
     const [menu, setMenu] = useState<{ x: number; y: number; items: MenuItem[] } | null>(null);
     const closeMenu = useCallback(() => setMenu(null), []);
@@ -93,7 +97,10 @@ function OfficeLibrary({ cardsRevision, selectedID, onSelect, onOpen, onChanged,
             x: evt.clientX,
             y: evt.clientY,
             items: [
-                ...(ids.length === 1 ? [{ label: "開啟", onSelect: () => onOpen(ids[0]) }] : []),
+                ...(ids.length === 1 ? [
+                    { label: "開啟", onSelect: () => onOpen(ids[0]) },
+                    { label: "在新分頁開啟", onSelect: () => onOpenInTab(ids[0]) },
+                ] : []),
                 {
                     label: deleteLabel(shown.filter((item) => ids.includes(item.id))),
                     onSelect: () => askDelete(ids),
@@ -120,6 +127,7 @@ function OfficeLibrary({ cardsRevision, selectedID, onSelect, onOpen, onChanged,
                 ))}
             </div>
             {typeFilter}
+            {tagFilter}
             {notes?.length === 0 && <p className="library-empty">還沒有文件。用上面的按鈕新增一份。</p>}
             <ul className="card-grid">
                 {visible?.map((note) => {
@@ -147,6 +155,7 @@ function OfficeLibrary({ cardsRevision, selectedID, onSelect, onOpen, onChanged,
                             }}
                         >
                             <NoteSummary note={note} />
+                            <NoteTags note={note} />
                             <FullscreenButton onOpen={() => onOpen(note.id)} />
                             {contents && <SheetToggle contents={contents} open={open} onToggle={() => toggle(note.id)} />}
                             {contents && open && (

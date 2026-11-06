@@ -210,6 +210,25 @@ pub struct Note {
     pub content: String,
     pub updated_at: f64,
     pub created_at: f64,
+    /// 依名稱排序。筆記只存 id，名稱和顏色在讀取時從工作區目錄取得。
+    pub tags: Vec<NoteTag>,
+}
+
+/// 貼在筆記上的 Tag。
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct NoteTag {
+    pub id: String,
+    pub name: String,
+    pub color: String,
+}
+
+/// Tag 目錄的一筆，`count` 是用到它的筆記數。
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct TagInfo {
+    pub id: String,
+    pub name: String,
+    pub color: String,
+    pub count: usize,
 }
 
 /// 畫布需要的全部資料。`notes` 的值為 null 表示筆記資料已遺失。
@@ -522,6 +541,8 @@ pub struct SheetObject {
     pub id: String,
     pub tab_id: String,
     pub note_id: String,
+    /// 物件是哪一種筆記，圖表和卡片的畫法不同。讀取時才查，不儲存。
+    pub note_type: String,
     pub x: f64,
     pub y: f64,
     pub w: f64,
@@ -600,6 +621,8 @@ pub enum SheetOp {
         target_cols: Vec<String>,
         series: bool,
     },
+    /// 把卡片放到分頁上，`x`、`y` 是卡片的中心。
+    PlaceCard { tab_id: String, target: String, x: f64, y: f64 },
     MoveObject { id: String, x: f64, y: f64, w: f64, h: f64 },
     RemoveObject { id: String },
 }
@@ -672,7 +695,7 @@ pub struct CreatedChart {
 pub struct SlideElement {
     pub id: String,
     pub slide_id: String,
-    /// `text`、`shape`、`image`、`cells`、`chart`。
+    /// `text`、`shape`、`image`、`cells`、`chart`、`card`。
     pub kind: String,
     pub x: f64,
     pub y: f64,
@@ -749,6 +772,9 @@ pub enum SlidesOp {
         shape: Option<String>,
         target: Option<String>,
         source: Option<CellRange>,
+        /// 物件中心在投影片上的位置，沒有就用預設位置。
+        x: Option<f64>,
+        y: Option<f64>,
     },
     PatchElement { id: String, patch: ElementPatch },
     MoveElements { moves: Vec<NoteMove> },

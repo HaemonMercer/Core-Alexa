@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useImperativeHandle, useRef, useState, type Ref } from "react";
 import * as api from "../../api.ts";
 import type { Note } from "../../types.ts";
 import CardLinks from "./CardLinks.tsx";
+import type { CardSurface } from "./cardSurface.ts";
 import { noteTypeLabel } from "../../noteTypes.ts";
 import CodeEditor from "../code/CodeEditor.tsx";
 import { noteLanguage } from "../code/languages.ts";
@@ -14,13 +15,26 @@ import MindmapEditor from "../mindmap/MindmapEditor.tsx";
 import SheetEditor from "../sheet/SheetEditor.tsx";
 import SlidesEditor from "../slides/SlidesEditor.tsx";
 import WriterEditor from "../writer/WriterEditor.tsx";
+import TagBar from "../tags/TagBar.tsx";
 import NoteEditorPlaceholder from "./NoteEditorPlaceholder.tsx";
 
 
+export interface CardFullscreenHandle {
+    /** 離開前呼叫，例如切換分頁。 */
+    flush: () => Promise<void>;
+}
+
 interface CardFullscreenProps {
+    ref: Ref<CardFullscreenHandle>;
     noteID: string;
     /** 內容或箭頭改變時遞增，連結清單要重新計算。 */
     linksRevision: number;
+    /** 放在文件裡的卡片要跟著更新。 */
+    cardRevision: number;
+    /** 文件像白板一樣可以放卡片，開著時把放置的地方交給右側的 Library。 */
+    onSurface: (surface: CardSurface | null) => void;
+    /** 雙擊文件裡的卡片：在右側面板編輯，文件留著。 */
+    onPeekCard: (id: string) => void;
     onChange: (id: string, content: string) => void;
     onNoteChanged: () => void;
     /** 卡片的內容在 Rust，改完要讀回來。 */
@@ -35,7 +49,7 @@ interface CardFullscreenProps {
 
 /** 卡片佔滿操作區，左右面板都留著。 */
 function CardFullscreen({
-    noteID, linksRevision, onChange, onNoteChanged, onCardChanged, onCodeLanguageChange, onOpenLink, onOpenCard, onCardCreated,
+    ref, noteID, linksRevision, cardRevision, onSurface, onPeekCard, onChange, onNoteChanged, onCardChanged, onCodeLanguageChange, onOpenLink, onOpenCard, onCardCreated,
     onClose, onError,
 }: CardFullscreenProps) {
     const [note, setNote] = useState<Note | null>(null);
@@ -46,6 +60,10 @@ function CardFullscreen({
     const close = useCallback(() => {
         void (drawio.current?.flush() ?? Promise.resolve()).then(onClose);
     }, [onClose]);
+
+    useImperativeHandle(ref, () => ({
+        flush: () => drawio.current?.flush() ?? Promise.resolve(),
+    }), []);
 
     useEffect(() => {
         let cancelled = false;
@@ -80,6 +98,7 @@ function CardFullscreen({
                     </button>
                 </span>
             </div>
+            {note?.id === noteID && <TagBar noteID={noteID} revision={cardRevision} onChanged={onNoteChanged} onError={onError} />}
             {note?.id === noteID && note.type === "mermaid" && (
                 <MermaidEditor
                     key={noteID}
@@ -105,13 +124,13 @@ function CardFullscreen({
             {note?.id === noteID && note.type === "image" && <ImageViewer note={note} />}
             {note?.id === noteID && note.type === "video" && <VideoViewer note={note} />}
             {note?.id === noteID && note.type === "writer" && (
-                <WriterEditor key={noteID} noteID={noteID} toolsSlot={tools} onChanged={onNoteChanged} onOpenLink={onOpenLink} onError={onError} />
+                <WriterEditor key={noteID} noteID={noteID} toolsSlot={tools} cardRevision={cardRevision} onSurface={onSurface} onPeekCard={onPeekCard} onCardChanged={onCardChanged} onCardCreated={onCardCreated} onChanged={onNoteChanged} onOpenLink={onOpenLink} onError={onError} />
             )}
             {note?.id === noteID && note.type === "sheet" && (
-                <SheetEditor key={noteID} noteID={noteID} onChanged={onNoteChanged} onOpenChart={onOpenCard} onError={onError} />
+                <SheetEditor key={noteID} noteID={noteID} cardRevision={cardRevision} onSurface={onSurface} onPeekCard={onPeekCard} onCardChanged={onCardChanged} onCardCreated={onCardCreated} onOpenLink={onOpenLink} onChanged={onNoteChanged} onOpenChart={onOpenCard} onError={onError} />
             )}
             {note?.id === noteID && note.type === "slides" && (
-                <SlidesEditor key={noteID} noteID={noteID} onChanged={onNoteChanged} onError={onError} />
+                <SlidesEditor key={noteID} noteID={noteID} cardRevision={cardRevision} onSurface={onSurface} onPeekCard={onPeekCard} onCardChanged={onCardChanged} onCardCreated={onCardCreated} onOpenLink={onOpenLink} onChanged={onNoteChanged} onError={onError} />
             )}
             {note?.id === noteID && note.type === "chart" && (
                 <ChartEditor key={noteID} noteID={noteID} onChanged={onNoteChanged} onError={onError} />

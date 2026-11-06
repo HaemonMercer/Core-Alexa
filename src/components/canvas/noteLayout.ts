@@ -3,7 +3,7 @@ import { paintRuns } from "../code/highlight.ts";
 import { fenceToLanguage } from "../code/languages.ts";
 
 // 把 Markdown 排版成畫布的繪製指令。
-// 字級、行高與間距要和 App.css 的 .note-editor 保持一致，進出編輯時畫面才不會跳動。
+// 字級、行高與間距要和 App.css 的 .writer-editor[data-inline] 保持一致，進出編輯時畫面才不會跳動。
 
 const SANS = '"Segoe UI", "Microsoft JhengHei", sans-serif';
 const MONO = '"Cascadia Code", Consolas, "Microsoft JhengHei", monospace';

@@ -5,7 +5,7 @@ use crate::media::MediaStore;
 use crate::model::{
     Alexa, ArrowDirection, BoardState, CardMatch, CellRange, ChartData, OfficeDocuments, CreatedChart, CreatedNote, CreatedWhiteboard,
     ImportedFiles, MindEdit, MindNode, Note, NoteDeletion, NoteFit, NoteLinks, NoteMove, NoteType, PlacedCard, RangeView,
-    RenamedWhiteboard, SheetOp, SheetState, SlidesEdit, SlidesOp, SlidesState, VideoInfo, ViewState, WhiteboardDeletion,
+    RenamedWhiteboard, SheetOp, SheetState, SlidesEdit, SlidesOp, SlidesState, TagInfo, NoteTag, VideoInfo, ViewState, WhiteboardDeletion,
     WorkspaceState, WriterBlock, WriterEdit, WriterOp, WriterPage,
 };
 use std::path::Path;
@@ -51,6 +51,36 @@ pub fn select_whiteboard(state: State<'_, AppState>, id: String) -> Result<Works
 #[tauri::command]
 pub fn get_note(state: State<'_, AppState>, id: String) -> Result<Option<Note>, String> {
     locked(&state)?.note(&id)
+}
+
+#[tauri::command]
+pub fn get_tags(state: State<'_, AppState>) -> Result<Vec<TagInfo>, String> {
+    locked(&state)?.tags()
+}
+
+#[tauri::command]
+pub fn add_note_tag(state: State<'_, AppState>, note_id: String, name: String) -> Result<NoteTag, String> {
+    locked(&state)?.add_note_tag(&note_id, &name)
+}
+
+#[tauri::command]
+pub fn remove_note_tag(state: State<'_, AppState>, note_id: String, tag_id: String) -> Result<(), String> {
+    locked(&state)?.remove_note_tag(&note_id, &tag_id)
+}
+
+#[tauri::command]
+pub fn rename_tag(state: State<'_, AppState>, id: String, name: String) -> Result<(), String> {
+    locked(&state)?.rename_tag(&id, &name)
+}
+
+#[tauri::command]
+pub fn set_tag_color(state: State<'_, AppState>, id: String, color: String) -> Result<(), String> {
+    locked(&state)?.set_tag_color(&id, &color)
+}
+
+#[tauri::command]
+pub fn delete_tag(state: State<'_, AppState>, id: String) -> Result<(), String> {
+    locked(&state)?.delete_tag(&id)
 }
 
 #[tauri::command]

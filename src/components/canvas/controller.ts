@@ -176,8 +176,6 @@ export interface BoardCallbacks {
     onOpenCard: (noteID: string) => void;
     /** Draw.io 放不進右側面板，直接開全螢幕。 */
     onOpenFullscreen: (noteID: string) => void;
-    /** 換到這個白板：右側面板回到 Card Library。 */
-    onCloseCard: () => void;
     onCardCreated: () => void;
     /** 箭頭改變時呼叫，卡片的連結清單要重新計算。 */
     onLinksChange: () => void;
@@ -258,7 +256,6 @@ export class BoardController {
         onCardImageLoaded(this.draw);
 
         this.select([]);
-        callbacks.onCloseCard();
 
         this.observer = new ResizeObserver(this.resize);
         this.observer.observe(canvas);

@@ -126,7 +126,43 @@ export function indentLimit(blocks: WriterBlock[], id: string): number {
     return index > 0 ? blocks[index - 1].indent + 1 : 0;
 }
 
-export const hasText = (kind: string) => !["divider", "cells", "chart", "image", "table", "pagebreak", "toc"].includes(kind);
+export const hasText = (kind: string) => !["divider", "cells", "chart", "image", "table", "pagebreak", "toc", "card"].includes(kind);
+
+/** 版面上的一列：一個區塊或一整組分欄。 */
+export interface DropRow {
+    first: string;
+    last: string;
+    top: number;
+    bottom: number;
+    /** 空的文字段落，放上去就取代它。 */
+    empty: boolean;
+    columns: boolean;
+}
+
+export interface CardDrop {
+    after: string | null;
+    replace: boolean;
+    /** 接在分欄後面時留在分欄外。 */
+    leaveColumns: boolean;
+    /** 提示線的位置。 */
+    line: number;
+}
+
+/** 從 Library 拖來的卡片放在哪裡：區塊之間，碰到空段落就取代它。 */
+export function cardDropAt(rows: DropRow[], y: number): CardDrop {
+    const last = rows[rows.length - 1];
+    const hovered = rows.find((row) => y >= row.top && y <= row.bottom) ?? (last && y > last.bottom ? last : undefined);
+    if (hovered?.empty) return { after: hovered.first, replace: true, leaveColumns: false, line: hovered.top };
+    const next = rows.findIndex((row) => y < (row.top + row.bottom) / 2);
+    const index = next === -1 ? rows.length : next;
+    const previous = rows[index - 1];
+    return {
+        after: previous?.last ?? null,
+        replace: false,
+        leaveColumns: previous?.columns ?? false,
+        line: rows[index]?.top ?? last?.bottom ?? 0,
+    };
+}
 
 const WIDE_LETTER = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/gu;
 

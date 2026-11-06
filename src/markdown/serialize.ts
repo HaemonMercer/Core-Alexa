@@ -193,7 +193,7 @@ function serializeBlock(block: Block): string {
                 .join("\n");
         case "list":
             return serializeList(block);
-        // 表格和圖片只來自 Writer 區塊，內容由 Rust 產生，不會走到這裡。
+        // 卡片的表格和圖片由 Rust 寫成 Markdown，這裡只處理白板方塊的名稱。
         case "table":
         case "image":
             return "";

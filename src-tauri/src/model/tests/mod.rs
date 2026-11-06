@@ -11,6 +11,7 @@ mod notes;
 mod office;
 mod persistence;
 mod placements;
+mod tags;
 mod whiteboards;
 
 use super::arrows::connected_arrows;

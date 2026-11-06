@@ -12,13 +12,14 @@ interface WhiteboardLibraryProps {
     whiteboards: Whiteboard[];
     rootID: string;
     onOpen: (id: string) => void;
+    onOpenInTab: (id: string) => void;
     onRename: (id: string, name: string) => void;
     onDeleted: (workspace: WorkspaceState) => void;
     onError: (error: unknown) => void;
 }
 
 function WhiteboardLibrary({
-    whiteboards, rootID, onOpen, onRename, onDeleted, onError,
+    whiteboards, rootID, onOpen, onOpenInTab, onRename, onDeleted, onError,
 }: WhiteboardLibraryProps) {
     const [foldedIDs, setFoldedIDs] = useState<ReadonlySet<string>>(new Set());
     const [menu, setMenu] = useState<{ x: number; y: number; ids: string[] } | null>(null);
@@ -123,6 +124,7 @@ function WhiteboardLibrary({
                         ? [{ label: `刪除 ${menu.ids.length} 個白板`, onSelect: () => askDelete(menu.ids) }]
                         : [
                             { label: "開啟白板", onSelect: () => onOpen(menu.ids[0]) },
+                            { label: "在新分頁開啟", onSelect: () => onOpenInTab(menu.ids[0]) },
                             { label: "刪除白板", onSelect: () => askDelete(menu.ids) },
                         ]}
                     onClose={closeMenu}

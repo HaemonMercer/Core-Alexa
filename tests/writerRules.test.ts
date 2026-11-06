@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
-    blockGroup, blockRuns, columnAt, dropSide, filterCommands, findRanges, findTrigger, hasText, indentLimit, isDividerMarker, listNumbers, pastedLines, shortcutKind, visibleBlocks, wordCount,
+    blockGroup, blockRuns, cardDropAt, columnAt, dropSide, filterCommands, findRanges, findTrigger, hasText, indentLimit, isDividerMarker, listNumbers, pastedLines, shortcutKind, visibleBlocks, wordCount,
 } from "../src/components/writer/rules.ts";
+import type { DropRow } from "../src/components/writer/rules.ts";
 import type { WriterBlock } from "../src/types.ts";
 
 const block = (id: string, kind: string, indent = 0, collapsed = false): WriterBlock => ({
@@ -154,4 +155,28 @@ test("縮排最多比上一個區塊深一層", () => {
 
 test("貼上多行時各種換行都能切開", () => {
     assert.deepEqual(pastedLines("a\r\nb\rc\nd"), ["a", "b", "c", "d"]);
+});
+
+const dropRow = (id: string, top: number, extra: Partial<DropRow> = {}): DropRow => ({ first: id, last: id, top, bottom: top + 20, empty: false, columns: false, ...extra });
+
+test("卡片放在區塊之間，看游標靠近哪一邊", () => {
+    const rows = [dropRow("a", 0), dropRow("b", 20)];
+    assert.deepEqual(cardDropAt(rows, 5), { after: null, replace: false, leaveColumns: false, line: 0 });
+    assert.deepEqual(cardDropAt(rows, 15), { after: "a", replace: false, leaveColumns: false, line: 20 });
+    assert.deepEqual(cardDropAt(rows, 500), { after: "b", replace: false, leaveColumns: false, line: 40 });
+});
+
+test("卡片放到空段落上取代它，放到文件下方也算最後一段", () => {
+    const rows = [dropRow("a", 0), dropRow("b", 20, { empty: true })];
+    assert.deepEqual(cardDropAt(rows, 25), { after: "b", replace: true, leaveColumns: false, line: 20 });
+    assert.deepEqual(cardDropAt(rows, Number.POSITIVE_INFINITY), { after: "b", replace: true, leaveColumns: false, line: 20 });
+});
+
+test("卡片接在分欄後面時留在分欄外", () => {
+    const rows = [dropRow("group", 0, { first: "a", last: "c", columns: true }), dropRow("b", 20)];
+    assert.deepEqual(cardDropAt(rows, 15), { after: "c", replace: false, leaveColumns: true, line: 20 });
+});
+
+test("空白文件也放得下卡片", () => {
+    assert.deepEqual(cardDropAt([], 10), { after: null, replace: false, leaveColumns: false, line: 0 });
 });
