@@ -32,6 +32,7 @@ import type {
     TagInfo,
     ViewState,
     WhiteboardDeletion,
+    WorkspaceList,
     WorkspaceState,
     WriterBlock,
     WriterEdit,
@@ -55,6 +56,19 @@ export const inspectDataLocation = (path: string) => send<boolean>("inspect_data
 
 /** 排進佇列，先前的編輯都寫入後才複製。成功時程式會重新啟動。 */
 export const setDataLocation = (path: string) => send<void>("set_data_location", { path });
+
+export const getWorkspaces = () => send<WorkspaceList>("get_workspaces");
+
+/** 成功時程式會重新啟動，開啟新的 Workspace。 */
+export const createWorkspace = (name: string) => send<void>("create_workspace", { name });
+
+export const renameWorkspace = (id: string, name: string) =>
+    send<WorkspaceList>("rename_workspace", { id, name });
+
+/** 成功時程式會重新啟動。 */
+export const switchWorkspace = (id: string) => send<void>("switch_workspace", { id });
+
+export const deleteWorkspace = (id: string) => send<WorkspaceList>("delete_workspace", { id });
 
 export const getWorkspace = () => send<WorkspaceState>("get_workspace");
 

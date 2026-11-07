@@ -2,6 +2,7 @@
 
 use crate::arrange::Arrangement;
 use crate::data_location::DataLocation;
+use crate::workspaces::{WorkspaceList, Workspaces};
 use crate::media::MediaStore;
 use crate::model::{
     Alexa, ArrowDirection, BoardState, CardMatch, CellRange, ChartData, OfficeDocuments, CreatedChart, CreatedNote, CreatedWhiteboard,
@@ -19,6 +20,12 @@ pub struct AppState(pub Mutex<Alexa>);
 
 fn locked<'a>(state: &'a State<'_, AppState>) -> Result<MutexGuard<'a, Alexa>, String> {
     state.0.lock().map_err(|_| "app state lock poisoned".to_string())
+}
+
+type SpacesState = Mutex<Workspaces>;
+
+fn locked_spaces<'a>(spaces: &'a State<'_, SpacesState>) -> Result<MutexGuard<'a, Workspaces>, String> {
+    spaces.lock().map_err(|_| "workspace list lock poisoned".to_string())
 }
 
 #[derive(Serialize)]
@@ -47,21 +54,71 @@ pub fn set_data_location(
     app: AppHandle,
     state: State<'_, AppState>,
     location: State<'_, DataLocation>,
+    spaces: State<'_, SpacesState>,
     path: String,
 ) -> Result<(), String> {
     let target = PathBuf::from(path);
     let has_data = location.inspect(&target)?;
+    let spaces = locked_spaces(&spaces)?;
     if !has_data {
-        location.copy_media(&target)?;
+        spaces.copy_media(&target)?;
     }
     // 鎖一直持有到重新啟動，複製之後的編輯才不會留在舊位置。
     let alexa = locked(&state)?;
     if !has_data {
-        location.copy_media(&target)?;
-        alexa.copy_database(&target)?;
+        spaces.copy_media(&target)?;
+        spaces.copy_databases(&alexa, &target)?;
     }
     location.remember(&target)?;
     app.restart()
+}
+
+#[tauri::command]
+pub fn get_workspaces(spaces: State<'_, SpacesState>) -> Result<WorkspaceList, String> {
+    Ok(locked_spaces(&spaces)?.list().clone())
+}
+
+/// 成功時程式會重新啟動，開啟新的 Workspace，不會回傳。
+#[tauri::command(async)]
+pub fn create_workspace(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    spaces: State<'_, SpacesState>,
+    name: String,
+) -> Result<(), String> {
+    let mut spaces = locked_spaces(&spaces)?;
+    let _alexa = locked(&state)?;
+    spaces.create(&name)?;
+    app.restart()
+}
+
+#[tauri::command]
+pub fn rename_workspace(spaces: State<'_, SpacesState>, id: String, name: String) -> Result<WorkspaceList, String> {
+    let mut spaces = locked_spaces(&spaces)?;
+    spaces.rename(&id, &name)?;
+    Ok(spaces.list().clone())
+}
+
+/// 成功時程式會重新啟動，不會回傳。
+#[tauri::command(async)]
+pub fn switch_workspace(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    spaces: State<'_, SpacesState>,
+    id: String,
+) -> Result<(), String> {
+    // 鎖一直持有到重新啟動，切換之後不會再有編輯寫進來。
+    let mut spaces = locked_spaces(&spaces)?;
+    let _alexa = locked(&state)?;
+    spaces.activate(&id)?;
+    app.restart()
+}
+
+#[tauri::command(async)]
+pub fn delete_workspace(spaces: State<'_, SpacesState>, id: String) -> Result<WorkspaceList, String> {
+    let mut spaces = locked_spaces(&spaces)?;
+    spaces.delete(&id)?;
+    Ok(spaces.list().clone())
 }
 
 #[tauri::command]

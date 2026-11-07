@@ -142,6 +142,32 @@ canvas.dragging {
 .left-panel-item:hover { background: var(--line); }
 .left-panel-item[aria-current="page"] { color: #fff; background: var(--accent); }
 .left-panel-foot { margin-top: auto; color: #57606a; }
+.workspace-switcher { position: relative; margin-bottom: 10px; }
+.workspace-current {
+  display: flex; align-items: center; justify-content: space-between; gap: 6px; width: 100%; padding: 7px 10px;
+  font: inherit; color: inherit; text-align: left; cursor: pointer;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 6px;
+}
+.workspace-current:hover:enabled { background: var(--line); }
+.workspace-current span:first-child, .workspace-menu-item { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.workspace-menu {
+  position: absolute; z-index: 4; top: calc(100% + 4px); left: 0; right: 0; display: flex; flex-direction: column;
+  gap: 2px; max-height: 320px; padding: 4px; overflow-y: auto;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+}
+.workspace-menu-item {
+  flex: none; padding: 6px 8px; font: inherit; color: inherit; text-align: left; cursor: pointer;
+  background: none; border: 0; border-radius: 5px;
+}
+.workspace-menu-item:hover { background: var(--bg); }
+.workspace-menu-item[aria-checked="true"] { font-weight: 600; color: var(--accent); }
+.workspace-menu-add { color: #57606a; }
+.workspace-input {
+  flex: none; min-width: 0; padding: 5px 8px; font: inherit; color: inherit;
+  background: var(--surface); border: 1px solid var(--accent); border-radius: 5px; outline: none;
+}
+.workspace-error { margin: 2px 8px 4px; font-size: 12px; color: #a32d2d; }
 .data-location { width: 460px; }
 .data-location-path {
   display: block; margin: 0 0 12px; padding: 6px 8px; font-size: 12px; overflow-wrap: anywhere;

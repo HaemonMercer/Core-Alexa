@@ -41,6 +41,17 @@ export interface PlacedCard {
     board: BoardState;
 }
 
+export interface WorkspaceEntry {
+    id: string;
+    name: string;
+}
+
+/** 彼此隔離的 Workspace。不要和 `WorkspaceState`（目前 Workspace 的白板目錄）搞混。 */
+export interface WorkspaceList {
+    activeId: string;
+    items: WorkspaceEntry[];
+}
+
 export interface DataLocationInfo {
     path: string;
     /** 選的位置打不開，暫時改用預設位置時才有值。 */

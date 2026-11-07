@@ -86,6 +86,7 @@ function App() {
     const leaveFullscreen = useCallback(() => fullscreenRef.current?.flush() ?? Promise.resolve(), []);
 
     const [dataLocationOpen, setDataLocationOpen] = useState(false);
+    const [spaceID, setSpaceID] = useState<string | null>(null);
 
     // 選的位置打不開時一啟動就要說，否則會以為資料不見了。
     useEffect(() => {
@@ -236,9 +237,10 @@ function App() {
     }, [selectedCardID, reportError]);
 
     useEffect(() => {
-        api.getWorkspace()
-            .then(restoreTabs)
-            .then((restored) => {
+        Promise.all([api.getWorkspace(), api.getWorkspaces()])
+            .then(async ([current, spaces]) => {
+                const restored = await restoreTabs(current, spaces.activeId);
+                setSpaceID(spaces.activeId);
                 setWorkspace(restored.workspace);
                 setTabState(restored.tabs);
             })
@@ -246,8 +248,8 @@ function App() {
     }, []);
 
     useEffect(() => {
-        if (tabState) saveTabs(tabState);
-    }, [tabState]);
+        if (tabState && spaceID) saveTabs(tabState, spaceID);
+    }, [tabState, spaceID]);
 
     // 白板可能在別處被刪除或換掉，分頁要跟上。
     useEffect(() => {
@@ -321,6 +323,7 @@ function App() {
                 onNavigate={navigate}
                 onOpenRoot={() => openWhiteboard(rootWhiteboardId)}
                 onOpenDataLocation={() => setDataLocationOpen(true)}
+                onBeforeRestart={leaveFullscreen}
                 onToggle={() => setLeftCollapsed((collapsed) => !collapsed)}
             />
             {dataLocationOpen && (

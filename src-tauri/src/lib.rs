@@ -7,6 +7,7 @@ mod model;
 mod order;
 mod persisted;
 mod storage;
+mod workspaces;
 
 use commands::{decode_header, AppState};
 use data_location::{saved_location, DataLocation, DATABASE_FILE};
@@ -17,6 +18,7 @@ use std::sync::Mutex;
 use tauri::http::{header, Response};
 use tauri::ipc::Invoke;
 use tauri::{Manager, Wry};
+use workspaces::Workspaces;
 
 /// 開發版可用 ALEXA_DATA_DIR 指定資料夾，測試時不會碰到真實資料。
 fn base_dir(app: &tauri::App) -> tauri::Result<PathBuf> {
@@ -29,17 +31,19 @@ fn base_dir(app: &tauri::App) -> tauri::Result<PathBuf> {
 
 /// 選的位置打不開時改用基本資料夾。不能在那裡建新資料庫，
 /// 否則外接硬碟晚點接上時，使用者會以為資料不見了。
-fn open_workspace(base: PathBuf) -> Result<(model::Alexa, DataLocation), String> {
+fn open_data(base: PathBuf) -> Result<(model::Alexa, DataLocation, Workspaces), String> {
     let saved = saved_location(&base);
-    let opened = saved
-        .as_ref()
-        .filter(|dir| dir.join(DATABASE_FILE).is_file())
-        .and_then(|dir| model::Alexa::open(&dir.join(DATABASE_FILE)).ok());
-    if let (Some(alexa), Some(current)) = (opened, saved.clone()) {
-        return Ok((alexa, DataLocation { base, current, unavailable: None }));
+    let opened = saved.as_ref().filter(|dir| dir.join(DATABASE_FILE).is_file()).and_then(|dir| {
+        let spaces = Workspaces::load(dir);
+        let alexa = model::Alexa::open(&spaces.active_folder().join(DATABASE_FILE)).ok()?;
+        Some((alexa, spaces))
+    });
+    if let (Some((alexa, spaces)), Some(current)) = (opened, saved.clone()) {
+        return Ok((alexa, DataLocation { base, current, unavailable: None }, spaces));
     }
-    let alexa = model::Alexa::open(&base.join(DATABASE_FILE))?;
-    Ok((alexa, DataLocation { current: base.clone(), base, unavailable: saved }))
+    let spaces = Workspaces::load(&base);
+    let alexa = model::Alexa::open(&spaces.active_folder().join(DATABASE_FILE))?;
+    Ok((alexa, DataLocation { current: base.clone(), base, unavailable: saved }, spaces))
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -50,10 +54,11 @@ pub fn run() {
         .setup(|app| {
             let base = base_dir(app)?;
             std::fs::create_dir_all(&base)?;
-            let (alexa, location) = open_workspace(base)?;
+            let (alexa, location, spaces) = open_data(base)?;
             app.manage(AppState(Mutex::new(alexa)));
-            app.manage(MediaStore::new(location.current.join("media")));
+            app.manage(MediaStore::new(spaces.active_folder().join("media")));
             app.manage(location);
+            app.manage(Mutex::new(spaces));
             app.manage(DrawioAssets::new(app.path().resource_dir()?.join("drawio")));
             Ok(())
         })
@@ -78,6 +83,11 @@ pub fn run() {
             commands::get_data_location,
             commands::inspect_data_location,
             commands::set_data_location,
+            commands::get_workspaces,
+            commands::create_workspace,
+            commands::rename_workspace,
+            commands::switch_workspace,
+            commands::delete_workspace,
             commands::get_workspace,
             commands::create_whiteboard,
             commands::rename_whiteboard,

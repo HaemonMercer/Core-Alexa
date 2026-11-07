@@ -1,4 +1,5 @@
 import PanelResizer from "./PanelResizer.tsx";
+import WorkspaceSwitcher from "./WorkspaceSwitcher.tsx";
 
 export type Page = "whiteboard" | "cards" | "whiteboards" | "office" | "tags";
 
@@ -23,11 +24,14 @@ interface LeftPanelProps {
     onNavigate: (page: Page) => void;
     onOpenRoot: () => void;
     onOpenDataLocation: () => void;
+    /** 切換 Workspace 會重新啟動，要先存好編輯中的內容。 */
+    onBeforeRestart: () => Promise<void>;
     onToggle: () => void;
 }
 
 function LeftPanel({
-    page, collapsed, width, widthRange, otherWidth, onWidthChange, onNavigate, onOpenRoot, onOpenDataLocation, onToggle,
+    page, collapsed, width, widthRange, otherWidth, onWidthChange, onNavigate, onOpenRoot, onOpenDataLocation,
+    onBeforeRestart, onToggle,
 }: LeftPanelProps) {
     if (collapsed) {
         return (
@@ -55,6 +59,7 @@ function LeftPanel({
                     «
                 </button>
             </div>
+            <WorkspaceSwitcher onBeforeRestart={onBeforeRestart} />
             {ITEMS.map((item) => (
                 <button
                     key={item.page}

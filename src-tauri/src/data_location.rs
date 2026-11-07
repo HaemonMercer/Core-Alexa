@@ -4,6 +4,7 @@
 //! 沒有這個檔案就是基本資料夾本身。換位置只複製，舊位置的資料不會動。
 
 use crate::storage;
+use crate::workspaces::WORKSPACES_FOLDER;
 use rusqlite::{Connection, OpenFlags};
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -63,11 +64,12 @@ impl DataLocation {
         if same_folder(&self.current, target) {
             return Err("資料已經在這個資料夾".to_string());
         }
-        // 放進媒體資料夾會讓複製進行時讀到自己。
-        let media = self.current.join(MEDIA_FOLDER);
-        if let (Ok(media), Ok(inside)) = (media.canonicalize(), target.canonicalize()) {
-            if inside.starts_with(media) {
-                return Err("不能放在媒體資料夾裡".to_string());
+        // 放進媒體或 Workspace 資料夾會讓複製進行時讀到自己。
+        for folder in [MEDIA_FOLDER, WORKSPACES_FOLDER] {
+            if let (Ok(inner), Ok(inside)) = (self.current.join(folder).canonicalize(), target.canonicalize()) {
+                if inside.starts_with(inner) {
+                    return Err("不能放在程式管理的資料夾裡".to_string());
+                }
             }
         }
         let database = target.join(DATABASE_FILE);
@@ -81,15 +83,15 @@ impl DataLocation {
         Ok(false)
     }
 
-    /// 圖片和影片可能很大，先複製一輪，這時不用鎖住編輯。
-    pub fn copy_media(&self, target: &Path) -> Result<(), String> {
-        copy_files(&self.current.join(MEDIA_FOLDER), &target.join(MEDIA_FOLDER))
-    }
-
     /// 之後的啟動改用這個位置。
     pub fn remember(&self, target: &Path) -> Result<(), String> {
         save_location(&self.base, target)
     }
+}
+
+/// 圖片和影片可能很大，先複製一輪，這時不用鎖住編輯。
+pub fn copy_media(from: &Path, to: &Path) -> Result<(), String> {
+    copy_files(&from.join(MEDIA_FOLDER), &to.join(MEDIA_FOLDER))
 }
 
 /// 檔案名稱來自內容雜湊，同名同大小就是同一份，所以重複執行只補上缺的。
@@ -234,10 +236,9 @@ mod tests {
         let (from, to) = (folder(), folder());
         fs::create_dir_all(from.join(MEDIA_FOLDER).join("ab")).unwrap();
         fs::write(from.join(MEDIA_FOLDER).join("ab").join("x.png"), b"1234").unwrap();
-        let current = location(&from);
-        current.copy_media(&to).unwrap();
+        copy_media(&from, &to).unwrap();
         fs::write(from.join(MEDIA_FOLDER).join("ab").join("y.png"), b"56").unwrap();
-        current.copy_media(&to).unwrap();
+        copy_media(&from, &to).unwrap();
         let copied = to.join(MEDIA_FOLDER).join("ab");
         assert_eq!(fs::read(copied.join("x.png")).unwrap(), b"1234");
         assert_eq!(fs::read(copied.join("y.png")).unwrap(), b"56");
@@ -246,7 +247,7 @@ mod tests {
 
     #[test]
     fn 沒有媒體資料夾也能複製() {
-        location(&folder()).copy_media(&folder()).unwrap();
+        copy_media(&folder(), &folder()).unwrap();
     }
 
     #[test]
@@ -281,10 +282,13 @@ mod tests {
     fn 不能選目前的資料夾媒體資料夾或不存在的路徑() {
         let current = folder();
         let media = current.join(MEDIA_FOLDER).join("ab");
+        let space = current.join(WORKSPACES_FOLDER).join("ab");
         fs::create_dir_all(&media).unwrap();
+        fs::create_dir_all(&space).unwrap();
         let place = location(&current);
         assert!(place.inspect(&current).is_err());
         assert!(place.inspect(&media).is_err());
+        assert!(place.inspect(&space).is_err());
         assert!(place.inspect(&current.join("沒有這個")).is_err());
         assert!(place.inspect(Path::new("relative")).is_err());
     }
